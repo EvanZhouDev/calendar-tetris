@@ -118,3 +118,9 @@ test("resident translations create complete replacements before deleting old eve
   assert.ok(creation >= 0);
   assert.ok(deletion > creation);
 });
+
+test("calendar creation does not wait for a fragile Calendar reply", () => {
+  assert.match(calendarAppleScripts.ensure, /ignoring application responses/u);
+  assert.doesNotMatch(calendarAppleScripts.ensure, /get count of calendars/u);
+  assert.doesNotMatch(calendarAppleScripts.configure, /calendarIdentifier/u);
+});

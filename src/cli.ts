@@ -166,7 +166,6 @@ async function runGame(optionsValue: Options): Promise<void> {
     const calendars = await phase(
       `[1/3] Preparing ${renderer.calendarCount} Game Calendars`,
       async () => {
-        await cleanupManagedCalendars();
         const prepared = await renderer.prepareCalendars();
         await recordCalendars(prepared);
         return prepared;
@@ -186,7 +185,6 @@ async function runGame(optionsValue: Options): Promise<void> {
     process.off("SIGTERM", handleSignal);
     restoreTerminal();
     await renderer.close().catch(() => {});
-    await cleanupManagedCalendars().catch(() => {});
     throw error;
   }
 

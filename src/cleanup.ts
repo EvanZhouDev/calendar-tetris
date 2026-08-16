@@ -13,7 +13,9 @@ interface Candidate {
 
 export async function cleanupManagedCalendars(): Promise<CleanupResult> {
   const state = await loadState();
-  const recordedIdentifiers = state.calendars.map((calendar) => calendar.identifier);
+  const recordedIdentifiers = state.calendars
+    .map((calendar) => calendar.identifier)
+    .filter(Boolean);
   const candidates = parseCandidates(
     await runAppleScript(listManagedCalendarsScript, [
       ownerMarker,
