@@ -19,9 +19,16 @@ try {
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`\n${message}`);
-  if (message.includes("-1743") || message.toLowerCase().includes("not authorized")) {
+  const automationDenied = message.includes("-1743")
+    || message.toLowerCase().includes("not authorized")
+    || message.includes("Calendar Automation access");
+  if (automationDenied) {
     console.error("\nAllow your terminal to control Calendar in:");
     console.error("System Settings → Privacy & Security → Automation");
+  }
+  if (message.includes("Full Calendar Access")) {
+    console.error("\nAllow Full Calendar Access in:");
+    console.error("System Settings → Privacy & Security → Calendars");
   }
   process.exitCode = 1;
 }

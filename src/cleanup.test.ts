@@ -55,11 +55,17 @@ test("cleanup clears every calendar in one AppleScript batch", () => {
   assert.doesNotMatch(cleanupAppleScripts.clearAll, /delete targetCalendar/u);
 });
 
+test("cleanup requests both permissions before mutation", () => {
+  const script = cleanupJXAScripts.requestAccess;
+  assert.match(script, /Application\("Calendar"\)\.calendars\.length/u);
+  assert.match(script, /requestFullAccessToEventsWithCompletion/u);
+  assert.match(script, /NSRunLoop\.currentRunLoop\.runUntilDate/u);
+  assert.doesNotMatch(script, /dispatch_group/u);
+});
+
 test("EventKit batches calendar removal into one commit", () => {
   const script = cleanupJXAScripts.removeCalendars;
   assert.match(script, /removeCalendarCommitError\(calendar, false/u);
   assert.match(script, /store\.commit\(commitError\)/u);
-  assert.match(script, /requestFullAccessToEventsWithCompletion/u);
-  assert.match(script, /NSRunLoop\.currentRunLoop\.runUntilDate/u);
-  assert.doesNotMatch(script, /dispatch_group/u);
+  assert.doesNotMatch(script, /requestFullAccessToEventsWithCompletion/u);
 });

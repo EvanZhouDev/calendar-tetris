@@ -12,6 +12,10 @@ interface ClearResult {
 }
 
 export async function cleanupManagedCalendars(): Promise<CleanupResult> {
+  // Trigger both native permission prompts before performing any mutation.
+  // macOS only presents them while authorization is undetermined.
+  await runJXAScript(requestCleanupAccessScript);
+
   // Discovery, ownership validation, and every event clear happen inside one
   // Calendar AppleScript process. This avoids process startup per calendar and
   // lets Calendar serialize the complete batch itself.
@@ -203,22 +207,10 @@ ObjC.import("Foundation");
 
 function run(argv) {
   const store = $.EKEventStore.alloc.init;
-  let granted = false;
-  let accessFinished = false;
-  let accessMessage = "Calendar access was denied.";
-
-  store.requestFullAccessToEventsWithCompletion((allowed, error) => {
-    granted = Boolean(allowed);
-    if (error) accessMessage = ObjC.unwrap(error.localizedDescription);
-    accessFinished = true;
-  });
-  while (!accessFinished) {
-    $.NSRunLoop.currentRunLoop.runUntilDate($.NSDate.dateWithTimeIntervalSinceNow(0.05));
+  const status = Number($.EKEventStore.authorizationStatusForEntityType($.EKEntityTypeEvent));
+  if (status !== Number($.EKAuthorizationStatusAuthorized)) {
+    throw new Error("Full Calendar Access is required to remove game calendars.");
   }
-  if (!granted) {
-    throw new Error("Full Calendar Access is required to remove game calendars. " + accessMessage);
-  }
-
   const allCalendars = store.calendarsForEntityType($.EKEntityTypeEvent);
   const removals = [];
   for (const name of argv) {
@@ -254,11 +246,53 @@ function eventKitError(prefix, reference) {
 }
 `;
 
+const requestCleanupAccessScript = String.raw`
+ObjC.import("EventKit");
+ObjC.import("Foundation");
+
+function run() {
+  // This AppleEvent read causes macOS to present the Automation prompt when
+  // access to Calendar.app has not yet been decided.
+  try {
+    Application("Calendar").calendars.length;
+  } catch (error) {
+    throw new Error("Calendar Automation access is required. " + error.toString());
+  }
+
+  const currentStatus = Number($.EKEventStore.authorizationStatusForEntityType($.EKEntityTypeEvent));
+  if (currentStatus === Number($.EKAuthorizationStatusAuthorized)) return "granted";
+  if (currentStatus !== Number($.EKAuthorizationStatusNotDetermined)) {
+    throw new Error("Full Calendar Access is not granted.");
+  }
+
+  // Keep osascript's run loop alive while the native EventKit permission sheet
+  // is visible. The callback completes after the user chooses Allow or Deny.
+  const store = $.EKEventStore.alloc.init;
+  let granted = false;
+  let accessFinished = false;
+  let accessMessage = "Calendar access was denied.";
+
+  store.requestFullAccessToEventsWithCompletion((allowed, error) => {
+    granted = Boolean(allowed);
+    if (error) accessMessage = ObjC.unwrap(error.localizedDescription);
+    accessFinished = true;
+  });
+  while (!accessFinished) {
+    $.NSRunLoop.currentRunLoop.runUntilDate($.NSDate.dateWithTimeIntervalSinceNow(0.05));
+  }
+  if (!granted) {
+    throw new Error("Full Calendar Access is required to remove game calendars. " + accessMessage);
+  }
+  return "granted";
+}
+`;
+
 export const cleanupAppleScripts = {
   clearAll: clearAllManagedCalendarsScript,
   remaining: listRemainingManagedCalendarsScript,
 } as const;
 
 export const cleanupJXAScripts = {
+  requestAccess: requestCleanupAccessScript,
   removeCalendars: removeCalendarsWithEventKitScript,
 } as const;
