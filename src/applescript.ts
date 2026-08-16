@@ -226,7 +226,8 @@ on run argv
     set ownerMarker to item 1 of argv
     set slotCount to (item 2 of argv) as integer
     set eventKeys to {}
-    set eventReferences to {}
+    set eventCalendarNames to {}
+    set eventURLs to {}
     set inputHandle to current application's NSFileHandle's fileHandleWithStandardInput()
     set outputHandle to current application's NSFileHandle's fileHandleWithStandardOutput()
 
@@ -247,7 +248,8 @@ on run argv
                     tell targetCalendar to set targetEvent to first event whose url is eventURL
                     if description of targetEvent is not ownerMarker then error "Unowned event " & eventKey
                     set end of eventKeys to eventKey
-                    set end of eventReferences to targetEvent
+                    set end of eventCalendarNames to calendarName
+                    set end of eventURLs to eventURL
                 end repeat
             end timeout
         end tell
@@ -273,7 +275,10 @@ on run argv
             set commandParts to my splitText(commandText, "|")
             if item 1 of commandParts is not "FRAME" then error "Unknown worker command"
             set updateCount to (count of commandParts) - 1
-            set hasMutation to false
+            set frameUpdates to {}
+            repeat with updateIndex from 1 to updateCount
+                set end of frameUpdates to my splitText(item (updateIndex + 1) of commandParts, ",")
+            end repeat
 
             tell application "Calendar"
                 with timeout of 3600 seconds
@@ -282,7 +287,7 @@ on run argv
                         -- geometry is retired. Calendar never observes a partial
                         -- start/end translation for an individual event.
                         repeat with updateIndex from 1 to updateCount
-                            set fields to my splitText(item (updateIndex + 1) of commandParts, ",")
+                            set fields to item updateIndex of frameUpdates
                             set operation to item 1 of fields
                             if operation is "C" or operation is "R" then
                                 set calendarName to item 3 of fields
@@ -302,60 +307,62 @@ on run argv
                         end repeat
 
                         repeat with updateIndex from 1 to updateCount
-                            set fields to my splitText(item (updateIndex + 1) of commandParts, ",")
+                            set fields to item updateIndex of frameUpdates
                             if item 1 of fields is "R" then
                                 set eventIndex to my indexOfKey(eventKeys, item 2 of fields)
-                                set targetEvent to item eventIndex of eventReferences
-                                delete targetEvent
+                                set oldCalendarName to item eventIndex of eventCalendarNames
+                                set oldEventURL to item eventIndex of eventURLs
+                                -- Keep the URL test inside the no-reply delete.
+                                -- A separate synchronous lookup roughly doubles
+                                -- the hot-path AppleEvents for replacements.
+                                tell calendar oldCalendarName to delete (first event whose url is oldEventURL)
                             end if
                         end repeat
 
                         repeat with updateIndex from 1 to updateCount
-                            set fields to my splitText(item (updateIndex + 1) of commandParts, ",")
+                            set fields to item updateIndex of frameUpdates
                             if item 1 of fields is "M" then
-                                set hasMutation to true
                                 set eventIndex to my indexOfKey(eventKeys, item 2 of fields)
-                                set targetEvent to item eventIndex of eventReferences
+                                set oldCalendarName to item eventIndex of eventCalendarNames
+                                set oldEventURL to item eventIndex of eventURLs
                                 set targetStart to weekStart + ((item 3 of fields) as integer)
                                 set targetEnd to weekStart + ((item 4 of fields) as integer)
                                 set shouldUpdateStart to (item 5 of fields) as integer
                                 set shouldUpdateEnd to (item 6 of fields) as integer
                                 set shouldUpdateSummary to (item 7 of fields) as integer
-                                if shouldUpdateStart is 1 then set start date of targetEvent to targetStart
-                                if shouldUpdateEnd is 1 then set end date of targetEvent to targetEnd
-                                if shouldUpdateSummary is 1 then set summary of targetEvent to my decodeField(item 8 of fields)
+                                tell calendar oldCalendarName
+                                    if shouldUpdateStart is 1 then set start date of (first event whose url is oldEventURL) to targetStart
+                                    if shouldUpdateEnd is 1 then set end date of (first event whose url is oldEventURL) to targetEnd
+                                    if shouldUpdateSummary is 1 then set summary of (first event whose url is oldEventURL) to my decodeField(item 8 of fields)
+                                end tell
                             end if
                         end repeat
                     end ignoring
 
-                    if hasMutation then
-                        get uid of targetEvent
-                    else
-                        get count of calendars
-                    end if
+                    -- One reply drains the entire no-reply frame. There are no
+                    -- synchronous per-event lookups on the render path.
+                    get count of calendars
 
-                    -- Reference lookups are deliberately after the visual
-                    -- completion barrier. ACK lets Node accept the next key
-                    -- while these nonvisual lookups finish in the worker.
-                    my writeLine(outputHandle, "ACK|" & updateCount)
-
+                    -- Record new URLs only after their frame has completed.
                     repeat with updateIndex from 1 to updateCount
-                        set fields to my splitText(item (updateIndex + 1) of commandParts, ",")
+                        set fields to item updateIndex of frameUpdates
                         set operation to item 1 of fields
                         if operation is "C" or operation is "R" then
                             set eventKey to item 2 of fields
                             set calendarName to item 3 of fields
                             set eventURL to item 4 of fields
-                            tell calendar calendarName to set targetEvent to first event whose url is eventURL
                             if operation is "C" then
                                 set end of eventKeys to eventKey
-                                set end of eventReferences to targetEvent
+                                set end of eventCalendarNames to calendarName
+                                set end of eventURLs to eventURL
                             else
                                 set eventIndex to my indexOfKey(eventKeys, eventKey)
-                                set item eventIndex of eventReferences to targetEvent
+                                set item eventIndex of eventCalendarNames to calendarName
+                                set item eventIndex of eventURLs to eventURL
                             end if
                         end if
                     end repeat
+                    my writeLine(outputHandle, "ACK|" & updateCount)
                 end timeout
             end tell
         on error errorMessage number errorNumber

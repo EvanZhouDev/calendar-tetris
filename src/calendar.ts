@@ -128,6 +128,9 @@ export class CalendarRenderer {
       ...[...this.palette.values()].map((entry) => entry.name),
     ]);
     this.slots = [];
+    // Start the resident process while setup is still on screen. It creates no
+    // events, but removes process-launch latency from Enter and the first move.
+    this.worker = await CalendarWorker.start(ownerMarker);
   }
 
   async render(snapshot: GameSnapshot, elapsedSeconds: number): Promise<void> {
@@ -422,6 +425,31 @@ export function planPool(slots: readonly EventSlot[], targets: readonly Calendar
       else updates.push({ slot, target, created: false });
     }
 
+    // Calendar derives left/full/right placement from overlap. Changing only
+    // that derived lane with identical dates and color needs no write at all.
+    for (const target of wanted) {
+      if (usedTargets.has(target)) continue;
+      const slot = available.find(
+        (candidate) => !usedSlots.has(candidate) && runsEqual(candidate.run, target),
+      );
+      if (!slot) continue;
+      usedSlots.add(slot);
+      usedTargets.add(target);
+      unchanged += 1;
+    }
+
+    // Maximize assignments where one bound is already correct. Such a reuse is
+    // one property write; changing both bounds requires create-then-delete.
+    // Bipartite matching prevents an early greedy choice from needlessly
+    // turning another cheap move into a replacement.
+    const movableSlots = available.filter((slot) => !usedSlots.has(slot));
+    const movableTargets = wanted.filter((target) => !usedTargets.has(target));
+    for (const [target, slot] of matchSingleBoundUpdates(movableSlots, movableTargets)) {
+      usedSlots.add(slot);
+      usedTargets.add(target);
+      updates.push({ slot, target, created: false });
+    }
+
     for (const target of wanted) {
       if (usedTargets.has(target)) continue;
       const candidates = available.filter((slot) => !usedSlots.has(slot));
@@ -448,6 +476,48 @@ export function planPool(slots: readonly EventSlot[], targets: readonly Calendar
   return { updates, unchanged };
 }
 
+function matchSingleBoundUpdates(
+  slots: readonly EventSlot[],
+  targets: readonly CalendarRun[],
+): ReadonlyMap<CalendarRun, EventSlot> {
+  const targetForSlot = new Map<EventSlot, CalendarRun>();
+  const candidates = new Map(
+    targets.map((target) => [
+      target,
+      slots
+        .filter((slot) => sharesEventBound(slot.run, target))
+        .sort((left, right) => assignmentCost(left.run, target) - assignmentCost(right.run, target)),
+    ]),
+  );
+
+  function assign(target: CalendarRun, visited: Set<EventSlot>): boolean {
+    for (const slot of candidates.get(target) ?? []) {
+      if (visited.has(slot)) continue;
+      visited.add(slot);
+      const displaced = targetForSlot.get(slot);
+      if (!displaced || assign(displaced, visited)) {
+        targetForSlot.set(slot, target);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Constrained targets first gives stable nearby choices. Augmenting paths
+  // still guarantee the maximum possible number of one-bound assignments.
+  for (const target of [...targets].sort(
+    (left, right) => (candidates.get(left)?.length ?? 0) - (candidates.get(right)?.length ?? 0),
+  )) {
+    assign(target, new Set());
+  }
+
+  return new Map([...targetForSlot].map(([slot, target]) => [target, slot]));
+}
+
+function sharesEventBound(previous: CalendarRun | null, target: CalendarRun): boolean {
+  return Boolean(previous && (previous.start === target.start || previous.end === target.end));
+}
+
 function applyPlan(slots: EventSlot[], plan: PoolPlan): void {
   for (const update of plan.updates) {
     if (update.created) slots.push(update.slot);
@@ -458,17 +528,25 @@ function applyPlan(slots: EventSlot[], plan: PoolPlan): void {
 function runsEqual(left: CalendarRun | null, right: CalendarRun): boolean {
   return Boolean(
     left &&
-      left.key === right.key &&
       left.start === right.start &&
       left.end === right.end &&
       left.summary === right.summary &&
-      left.allDay === right.allDay,
+      left.allDay === right.allDay &&
+      left.color === right.color,
   );
 }
 
 function assignmentCost(previous: CalendarRun | null, target: CalendarRun): number {
-  if (!previous) return 1_000_000;
-  return Math.abs(previous.start - target.start) + Math.abs(previous.end - target.end) / 2;
+  // Prefer translating one currently visible event over reviving a parked slot:
+  // choosing the parked slot would also require hiding the visible event and
+  // turns one replacement into two.
+  if (!previous) return 1_000_000_000_000;
+  const startChanged = previous.start !== target.start;
+  const endChanged = previous.end !== target.end;
+  const replacementPenalty = startChanged && endChanged ? 1_000_000 : 0;
+  return replacementPenalty
+    + Math.abs(previous.start - target.start)
+    + Math.abs(previous.end - target.end) / 2;
 }
 
 function compareUpdates(left: PoolUpdate, right: PoolUpdate): number {
@@ -491,7 +569,10 @@ function laneOrder(lane: RenderLane): number {
 }
 
 function paletteForRun(run: CalendarRun): string {
-  return `${run.lane}:${run.color}`;
+  // Lane is layout produced by overlapping events, not an EventKit property.
+  // Pooling by color lets a full-width event become a left/right event without
+  // creating a new Calendar event when its actual dates are unchanged.
+  return `${run.allDay ? "allDay" : "timed"}:${run.color}`;
 }
 
 function nextSlotID(slots: readonly EventSlot[], updates: readonly PoolUpdate[]): number {
