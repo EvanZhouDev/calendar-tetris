@@ -169,10 +169,10 @@ on run argv
             repeat with eventDescription in eventDescriptions
                 if contents of eventDescription is not ownerMarker then error "Refusing to clear a calendar containing an unowned event"
             end repeat
-            ignoring application responses
-                tell targetCalendar to delete every event
-            end ignoring
-            return "submitted"
+            -- Keep this synchronous. A short-lived osascript process can exit
+            -- before Calendar applies a detached no-reply deletion.
+            tell targetCalendar to delete every event
+            return "cleared"
         end timeout
     end tell
 end run
@@ -205,10 +205,10 @@ on run argv
             set targetCalendar to item 1 of matches
             if description of targetCalendar is not ownerMarker then error "Refusing to delete an unowned calendar"
             if (count of events of targetCalendar) is not 0 then error "Calendar still contains events" number -10000
-            ignoring application responses
-                delete targetCalendar
-            end ignoring
-            return "submitted"
+            -- Calendar may return -10000 after accepting this command. Node
+            -- verifies absence in a fresh process before deciding success.
+            delete targetCalendar
+            return "deleted"
         end timeout
     end tell
 end run

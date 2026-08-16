@@ -34,3 +34,10 @@ test("cleanup uses fresh postconditions instead of save barriers", () => {
     assert.doesNotMatch(script, /^\s*save\s*$/mu);
   }
 });
+
+test("cleanup waits for destructive Calendar commands to be delivered", () => {
+  assert.doesNotMatch(cleanupAppleScripts.clearOne, /ignoring application responses/u);
+  assert.doesNotMatch(cleanupAppleScripts.deleteOne, /ignoring application responses/u);
+  assert.match(cleanupAppleScripts.clearOne, /delete every event/u);
+  assert.match(cleanupAppleScripts.deleteOne, /delete targetCalendar/u);
+});
