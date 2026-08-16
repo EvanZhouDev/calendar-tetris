@@ -12,6 +12,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "start": "npm run build && node dist/cli.js",
     "test": "npm run build && node --test dist/*.test.js"
   },
   "engines": {
@@ -25,4 +26,3 @@
     "typescript": "^5.9.2"
   }
 }
-
