@@ -7,11 +7,17 @@
     "calendar-tetris": "./dist/cli.js"
   },
   "files": [
-    "dist",
+    "dist/applescript.js",
+    "dist/calendar.js",
+    "dist/cleanup.js",
+    "dist/cli.js",
+    "dist/game.js",
+    "dist/state.js",
     "README.md"
   ],
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm test",
     "start": "npm run build && node dist/cli.js",
     "test": "npm run build && node --test dist/*.test.js"
   },

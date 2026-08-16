@@ -16,6 +16,7 @@ test("compact mode exposes the six requested user-facing names", () => {
   assert.deepEqual(compactRules.pieces.map((piece) => piece.label), [
     "I", "Domino", "L", "T", "S", "Z",
   ]);
+  assert.deepEqual(compactRules.pieces.map((piece) => piece.cells.length), [3, 2, 3, 4, 4, 4]);
 });
 
 test("a piece cannot move beyond either wall", () => {

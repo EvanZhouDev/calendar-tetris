@@ -65,10 +65,14 @@ export async function clearRecordedCalendars(): Promise<void> {
   await saveState({ ...state, calendars: [] });
 }
 
+export async function markPermissionGranted(): Promise<void> {
+  const state = await loadState();
+  if (!state.permissionGranted) await saveState({ ...state, permissionGranted: true });
+}
+
 async function saveState(state: CalendarTetrisState): Promise<void> {
   await mkdir(dirname(statePath), { recursive: true });
   const temporaryPath = `${statePath}.${process.pid}.tmp`;
   await writeFile(temporaryPath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
   await rename(temporaryPath, statePath);
 }
-

@@ -1,0 +1,67 @@
+# Calendar Tetris
+
+Play Tetris in Apple Calendar. Calendar is the display; your terminal is the
+controller.
+
+## Run
+
+Calendar Tetris requires macOS, Apple Calendar, and Node.js 20 or newer.
+
+~~~sh
+npx calendar-tetris
+~~~
+
+During setup, place Calendar and the terminal side by side, switch Calendar to
+Week View, go to Today, and scroll to the top. Return focus to the terminal and
+press Enter.
+
+Calendar Tetris asks for permission to control Calendar on its first run. It
+creates dedicated calendars for the game and removes them when you quit.
+
+## Options
+
+~~~sh
+# Compact 10 × 5 board with I, Domino, L, T, S, and Z pieces.
+npx calendar-tetris --5-col
+
+# Hide Score, Hold, Up Next, title, and elapsed time.
+npx calendar-tetris --no-hud
+
+# Combine both options.
+npx calendar-tetris --5-col --no-hud
+~~~
+
+## Controls
+
+- **Left/Right arrows:** Move
+- **Up arrow:** Rotate clockwise
+- **Down arrow:** Soft drop
+- **Space:** Hard drop
+- **C:** Hold
+- **R:** Restart
+- **Q** or **Control-C:** Quit and clean up
+
+Normal gameplay does not log frames or status lines in the terminal. When the
+game ends, it prints `GAME OVER. Press R to restart.`
+
+## Cleanup
+
+If the process was force-quit before automatic cleanup completed, run:
+
+~~~sh
+npx calendar-tetris cleanup
+~~~
+
+Cleanup verifies Calendar identifiers and ownership markers before deleting
+anything. It never treats a name prefix by itself as permission to remove a
+calendar.
+
+## Development
+
+~~~sh
+npm install
+npm test
+~~~
+
+The test suite compiles every AppleScript without launching or contacting
+Calendar.

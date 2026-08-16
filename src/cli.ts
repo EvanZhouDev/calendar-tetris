@@ -16,14 +16,7 @@ try {
   if (options.command === "help") showHelp();
   else if (options.command === "version") console.log("0.1.0");
   else if (options.command === "cleanup") await runCleanup();
-  else {
-    try {
-      await runGame(options);
-    } catch (error) {
-      await cleanupManagedCalendars().catch(() => {});
-      throw error;
-    }
-  }
+  else await runGame(options);
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`\n${message}`);
@@ -87,7 +80,7 @@ async function runGame(optionsValue: Options): Promise<void> {
   console.log(titleFor(optionsValue));
   console.log();
   if (!state.permissionGranted) {
-    console.log("Calendar Tetris needs permission to control Calendar.");
+    console.log("Calendar Tetris needs permissions to control Calendar.");
     console.log("Choose Allow when the permission prompt appears.\n");
   }
   console.log("Calendar Tetris is starting. While you’re waiting...\n");
@@ -167,24 +160,33 @@ async function runGame(optionsValue: Options): Promise<void> {
     }
   };
 
-  const calendars = await phase(
-    `[1/3] Preparing ${renderer.calendarCount} Game Calendars`,
-    async () => {
-      await cleanupManagedCalendars();
-      const prepared = await renderer.prepareCalendars();
-      await recordCalendars(prepared);
-      return prepared;
-    },
-  );
-  if (shuttingDown) return;
-  if (calendars.length !== renderer.calendarCount) {
-    throw new Error(`Prepared ${calendars.length} calendars; expected ${renderer.calendarCount}.`);
-  }
+  try {
+    const calendars = await phase(
+      `[1/3] Preparing ${renderer.calendarCount} Game Calendars`,
+      async () => {
+        await cleanupManagedCalendars();
+        const prepared = await renderer.prepareCalendars();
+        await recordCalendars(prepared);
+        return prepared;
+      },
+    );
+    if (shuttingDown) return;
+    if (calendars.length !== renderer.calendarCount) {
+      throw new Error(`Prepared ${calendars.length} calendars; expected ${renderer.calendarCount}.`);
+    }
 
-  await phase("[2/3] Resetting the board", () => renderer.resetBoard());
-  if (shuttingDown) return;
-  await phase("[3/3] Drawing first piece", () => renderer.render(game.snapshot, 0));
-  if (shuttingDown) return;
+    await phase("[2/3] Resetting the board", () => renderer.resetBoard());
+    if (shuttingDown) return;
+    await phase("[3/3] Drawing first piece", () => renderer.render(game.snapshot, 0));
+    if (shuttingDown) return;
+  } catch (error) {
+    process.off("SIGINT", handleSignal);
+    process.off("SIGTERM", handleSignal);
+    restoreTerminal();
+    await renderer.close().catch(() => {});
+    await cleanupManagedCalendars().catch(() => {});
+    throw error;
+  }
 
   console.log("\nSetup complete. Focus this terminal and press Enter.\n");
   console.log("← → Move   ↑ Rotate   ↓ Drop   Space Hard drop");

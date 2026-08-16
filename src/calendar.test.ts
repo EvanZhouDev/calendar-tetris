@@ -6,12 +6,20 @@ import { join } from "node:path";
 import test from "node:test";
 import { calendarWorkerAppleScript } from "./applescript.js";
 import {
+  CalendarRenderer,
   calendarAppleScripts,
   planPool,
   runsForSnapshot,
   type EventSlot,
 } from "./calendar.js";
 import { compactRules, standardRules, TetrisGame } from "./game.js";
+
+test("each mode creates only the calendars it needs", () => {
+  assert.equal(new CalendarRenderer({ compact: false, hud: true }).calendarCount, 9);
+  assert.equal(new CalendarRenderer({ compact: false, hud: false }).calendarCount, 8);
+  assert.equal(new CalendarRenderer({ compact: true, hud: true }).calendarCount, 7);
+  assert.equal(new CalendarRenderer({ compact: true, hud: false }).calendarCount, 6);
+});
 
 test("empty compact columns need no board events", () => {
   const game = new TetrisGame(compactRules, () => 0);
@@ -44,6 +52,12 @@ test("a lone standard half-cell is paired with a placeholder", () => {
   const placeholder = runs.find((run) => run.color === "empty");
   assert.ok(placeholder);
   assert.ok(placeholder.lane === "left" || placeholder.lane === "right");
+  const colored = runs.find((run) => run.color === "T");
+  assert.ok(colored);
+  const left = colored.lane === "left" ? colored : placeholder;
+  const right = colored.lane === "right" ? colored : placeholder;
+  assert.equal(right.start - left.start, 1);
+  assert.equal(right.end, left.end);
 });
 
 test("matching standard halves become one full-width event", () => {
