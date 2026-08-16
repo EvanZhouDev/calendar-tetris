@@ -7,6 +7,8 @@ Play Tetris in Apple Calendar.
 
 ## Run
 
+![](/assets/terminal-demo.png)
+
 Run the CLI and follow the instructions to get started. Calendar Tetris requires macOS.
 
 ```sh
@@ -17,14 +19,14 @@ Control Calendar Tetris by entering keys into your terminal.
 
 > [!WARNING]
 > **Calendar Tetris requires permission to control your calendar.**
-> It creates and uses its own calendars and should never affects your existing calendars.
+> It creates and uses its own calendars and should never affect your existing calendars.
 > Nonetheless, if you have important information in your calendar, proceed with caution.
 
 
 ## Modes
 
 ![](/assets/10-col-demo.png)
-*Default mode of 10-columns with HUD. Run with `npx calendar-tetris`*
+*Default mode of 10 columns with HUD. Run with `npx calendar-tetris`*
 
 ### `--no-hud`
 
@@ -37,7 +39,7 @@ npx calendar-tetris --no-hud
 ### `--5-col`
 
 You can play a modified 5-column version of Tetris with the `--5-col` flag. It has the I (3-cell), Domino (2-cell), L, T, S, and Z pieces.
-This mode has better performance since there are less events being created and edited.
+This mode has better performance since there are fewer events being created and edited.
 
 ```sh
 npx calendar-tetris --5-col
