@@ -3,7 +3,6 @@
 import { CalendarRenderer } from "./calendar.js";
 import { cleanupManagedCalendars } from "./cleanup.js";
 import { compactRules, standardRules, TetrisGame } from "./game.js";
-import { recordCalendars } from "./state.js";
 
 interface Options {
   command: "run" | "cleanup" | "help" | "version";
@@ -165,11 +164,7 @@ async function runGame(optionsValue: Options): Promise<void> {
   try {
     const calendars = await phase(
       `[1/2] Preparing ${renderer.calendarCount} Game Calendars`,
-      async () => {
-        const prepared = await renderer.prepareCalendars();
-        await recordCalendars(prepared);
-        return prepared;
-      },
+      () => renderer.prepareCalendars(),
     );
     if (shuttingDown) return;
     if (calendars.length !== renderer.calendarCount) {

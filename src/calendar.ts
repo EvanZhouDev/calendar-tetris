@@ -30,7 +30,6 @@ export interface CalendarOptions {
 export interface ManagedCalendar {
   key: string;
   name: string;
-  identifier: string;
   color: string;
 }
 
@@ -101,7 +100,6 @@ export class CalendarRenderer {
         return entries.map((entry) => ({
           key: entry.key,
           name: entry.name,
-          identifier: "",
           color: entry.color,
         }));
       } catch (error) {

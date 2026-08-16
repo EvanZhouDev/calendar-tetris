@@ -1,6 +1,6 @@
 # Calendar Tetris: next changes
 
-Status: implementation specification. This document covers the requested changes from the cleanup/input/startup message and the follow-up playfield-buffer message. No implementation is included in this commit.
+Status: implemented. This document records the requested cleanup, input, startup, and playfield-buffer behavior.
 
 ## Outcome
 

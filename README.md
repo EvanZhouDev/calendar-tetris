@@ -15,13 +15,16 @@ During setup, place Calendar and the terminal side by side, switch Calendar to
 Week View, go to Today, and scroll to the top. Return focus to the terminal and
 press Enter.
 
+The board fills the midnight-to-noon viewport. Pieces enter through a short
+12:00–2:00 AM buffer before reaching the main matrix.
+
 Calendar Tetris asks for permission to control Calendar on its first run. It
 creates dedicated calendars for the game and removes them when you quit.
 
 ## Options
 
 ~~~sh
-# Compact 10 × 5 board with I, Domino, L, T, S, and Z pieces.
+# Compact five-column board with I, Domino, L, T, S, and Z pieces.
 npx calendar-tetris --5-col
 
 # Hide Score, Hold, Up Next, title, and elapsed time.
@@ -52,9 +55,9 @@ If the process was force-quit before automatic cleanup completed, run:
 npx calendar-tetris cleanup
 ~~~
 
-Cleanup verifies Calendar identifiers and ownership markers before deleting
-anything. It never treats a name prefix by itself as permission to remove a
-calendar.
+Cleanup verifies ownership markers and event ownership before deleting
+anything. It can also recover an empty partial calendar from an interrupted
+setup, but never removes a nonempty unowned calendar.
 
 ## Development
 

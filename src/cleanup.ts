@@ -1,6 +1,6 @@
 import { calendarPrefix, ownerMarker } from "./calendar.js";
 import { runAppleScript } from "./applescript.js";
-import { clearRecordedCalendars } from "./state.js";
+import { removeLegacyState } from "./state.js";
 
 export interface CleanupResult {
   removed: string[];
@@ -13,7 +13,7 @@ export async function cleanupManagedCalendars(): Promise<CleanupResult> {
     ),
   );
   if (candidates.length === 0) {
-    await clearRecordedCalendars();
+    await removeLegacyState();
     return { removed: [] };
   }
 
@@ -39,7 +39,7 @@ export async function cleanupManagedCalendars(): Promise<CleanupResult> {
     );
   }
 
-  await clearRecordedCalendars();
+  await removeLegacyState();
   return { removed: candidates };
 }
 

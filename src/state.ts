@@ -1,19 +1,8 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
-import type { ManagedCalendar } from "./calendar.js";
+import { join } from "node:path";
 
-interface CalendarRecord {
-  identifier: string;
-  name: string;
-}
-
-export interface CalendarTetrisState {
-  version: 1;
-  calendars: CalendarRecord[];
-}
-
-const statePath = join(
+const legacyStatePath = join(
   homedir(),
   "Library",
   "Application Support",
@@ -21,49 +10,7 @@ const statePath = join(
   "state.json",
 );
 
-const emptyState: CalendarTetrisState = {
-  version: 1,
-  calendars: [],
-};
-
-export async function loadState(): Promise<CalendarTetrisState> {
-  try {
-    const parsed = JSON.parse(await readFile(statePath, "utf8")) as Partial<CalendarTetrisState>;
-    if (
-      parsed.version !== 1 ||
-      !Array.isArray(parsed.calendars)
-    ) {
-      return structuredClone(emptyState);
-    }
-    const calendars = parsed.calendars.filter(
-      (calendar): calendar is CalendarRecord =>
-        typeof calendar === "object" &&
-        calendar !== null &&
-        typeof calendar.identifier === "string" &&
-        typeof calendar.name === "string",
-    );
-    return { version: 1, calendars };
-  } catch {
-    return structuredClone(emptyState);
-  }
-}
-
-export async function recordCalendars(calendars: readonly ManagedCalendar[]): Promise<void> {
-  const state = await loadState();
-  await saveState({
-    version: 1,
-    calendars: calendars.map(({ identifier, name }) => ({ identifier, name })),
-  });
-}
-
-export async function clearRecordedCalendars(): Promise<void> {
-  const state = await loadState();
-  await saveState({ ...state, calendars: [] });
-}
-
-async function saveState(state: CalendarTetrisState): Promise<void> {
-  await mkdir(dirname(statePath), { recursive: true });
-  const temporaryPath = `${statePath}.${process.pid}.tmp`;
-  await writeFile(temporaryPath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
-  await rename(temporaryPath, statePath);
+/** Remove identifier-based state written by pre-0.1 development builds. */
+export async function removeLegacyState(): Promise<void> {
+  await rm(legacyStatePath, { force: true });
 }
