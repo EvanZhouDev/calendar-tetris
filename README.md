@@ -1,66 +1,65 @@
-# Calendar Tetris
+# 📅 Calendar Tetris
 
-Play Tetris in Apple Calendar. Calendar is the display; your terminal is the
-controller.
+Play Tetris in Apple Calendar.
+
+![](/assets/5-col-demo.png)
+*5-Column mode with HUD off. Run with `npx calendar-tetris --5-col --no-hud`*
 
 ## Run
 
-Calendar Tetris requires macOS, Apple Calendar, and Node.js 20 or newer.
+Run the CLI and follow the instructions to get started. Calendar Tetris requires macOS.
 
-~~~sh
+```sh
 npx calendar-tetris
-~~~
+```
 
-During setup, place Calendar and the terminal side by side, switch Calendar to
-Week View, go to Today, and scroll to the top. Return focus to the terminal and
-press Enter.
+Control Calendar Tetris by entering keys into your terminal.
 
-The board fills the midnight-to-noon viewport. Pieces enter through a short
-12:00–2:00 AM buffer before reaching the main matrix.
+> [!WARNING]
+> **Calendar Tetris requires permission to control your calendar.**
+> It creates and uses its own calendars and should never affects your existing calendars.
+> Nonetheless, if you have important information in your calendar, proceed with caution.
 
-Calendar Tetris asks for permission to control Calendar on its first run. It
-creates dedicated calendars for the game and removes them when you quit.
 
-## Options
+## Modes
 
-~~~sh
-# Compact five-column board with I, Domino, L, T, S, and Z pieces.
-npx calendar-tetris --5-col
+![](/assets/10-col-demo.png)
+*Default mode of 10-columns with HUD. Run with `npx calendar-tetris`*
 
-# Hide Score, Hold, Up Next, title, and elapsed time.
+### `--no-hud`
+
+You can hide the HUD (Hold, Up Next, and the header) with the `--no-hud` flag.
+
+```sh
 npx calendar-tetris --no-hud
+```
 
-# Combine both options.
-npx calendar-tetris --5-col --no-hud
-~~~
+### `--5-col`
 
-## Controls
+You can play a modified 5-column version of Tetris with the `--5-col` flag. It has the I (3-cell), Domino (2-cell), L, T, S, and Z pieces.
+This mode has better performance since there are less events being created and edited.
 
-- **Left/Right arrows:** Move
-- **Up arrow:** Rotate clockwise
-- **Down arrow:** Soft drop
-- **Space:** Hard drop
-- **C:** Hold
-- **R:** Restart
-- **Q** or **Control-C:** Quit and clean up
+```sh
+npx calendar-tetris --5-col
+```
 
-Normal gameplay does not log frames or status lines in the terminal. When the
-game ends, it prints `GAME OVER. Press R to restart.`
 
 ## Cleanup
 
-If the process was force-quit before automatic cleanup completed, run:
+Calendar Tetris should automatically clean up any Calendars created during the game.
+
+However, if the process was force-quit before automatic cleanup completed, run:
 
 ~~~sh
 npx calendar-tetris cleanup
 ~~~
 
-Cleanup verifies calendar ownership markers before deleting anything. It also
-recognizes an empty partial calendar from an interrupted setup, but never
-removes a nonempty unowned calendar. Cleanup removes all game calendars and
-their contained events directly in one EventKit commit; it does not delete
-events one at a time. Before changing anything, it requests Calendar Automation
-and Full Calendar Access when macOS has not already decided those permissions.
+Cleanup should only ever remove game calendars created by Calendar Tetris. You can also safely manually perform cleanup by deleting calendars whose names start with `__CALENDAR_TETRIS__*`.
+
+## How Does it Work?
+
+Calendar Tetris controls your calendar with AppleScript and EventKit.
+By creating calendars for every color needed, Calendar Tetris can create and edit events in the proper-colored calendars to turn events into Tetris blocks falling down your calendar.
 
 ## Development
 
@@ -69,5 +68,4 @@ npm install
 npm test
 ~~~
 
-The test suite compiles every AppleScript without launching or contacting
-Calendar.
+The test suite compiles every AppleScript without launching or contacting Calendar.
