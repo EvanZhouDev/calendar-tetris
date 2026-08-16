@@ -2,12 +2,12 @@
 
 Play Tetris in Apple Calendar.
 
-![](/assets/5-col-demo.png)
+![](./assets/5-col-demo.png)
 *5-Column mode with HUD off. Run with `npx calendar-tetris --5-col --no-hud`*
 
 ## Run
 
-![](/assets/terminal-demo.png)
+![](./assets/terminal-demo.png)
 
 Run the CLI and follow the instructions to get started. Calendar Tetris requires macOS.
 
@@ -25,7 +25,7 @@ Control Calendar Tetris by entering keys into your terminal.
 
 ## Modes
 
-![](/assets/10-col-demo.png)
+![](./assets/10-col-demo.png)
 *Default mode of 10 columns with HUD. Run with `npx calendar-tetris`*
 
 ### `--no-hud`

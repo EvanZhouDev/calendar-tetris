@@ -13,6 +13,7 @@
     "dist/cli.js",
     "dist/game.js",
     "dist/state.js",
+    "assets",
     "README.md"
   ],
   "scripts": {
