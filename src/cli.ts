@@ -14,7 +14,6 @@ const useColor = Boolean(process.stdout.isTTY && !("NO_COLOR" in process.env));
 
 const style = {
   title: (text: string): string => ansi("1;36", text),
-  bold: (text: string): string => ansi("1", text),
   success: (text: string): string => ansi("1;32", text),
   warning: (text: string): string => ansi("33", text),
   danger: (text: string): string => ansi("1;31", text),
@@ -80,7 +79,6 @@ Options:
 }
 
 async function runCleanup(): Promise<void> {
-  console.log(style.title("Calendar Tetris"));
   console.log(style.warning("Cleaning up calendars used for Calendar Tetris."));
   await cleanupManagedCalendars((message) => console.log(formatStep(message)));
   console.log(style.success("Cleanup complete."));
@@ -95,13 +93,12 @@ async function runGame(optionsValue: Options): Promise<void> {
   const rules = optionsValue.compact ? compactRules : standardRules;
   const game = new TetrisGame(rules);
 
-  console.log(style.title(titleFor(optionsValue)));
-  console.log();
+  console.log(`${gameTitleFor(optionsValue)} is starting.`);
   let instructionsShown = false;
   const showInstructions = (): void => {
     if (instructionsShown) return;
     instructionsShown = true;
-    console.log(`${style.bold("Setting up.")} While you’re waiting...\n`);
+    console.log("While you’re waiting...\n");
     console.log(`${style.dim("1.")} Place both Calendar and this terminal in view.`);
     console.log(`${style.dim("2.")} Set Calendar to Week View (${style.key("⌘2")}) and Go to Today (${style.key("⌘T")}).`);
     console.log(`${style.dim("3.")} Scroll up to the top of Calendar.\n`);
@@ -147,7 +144,7 @@ async function runGame(optionsValue: Options): Promise<void> {
     resolveStart?.();
     restoreTerminal();
     console.log(`\n${style.warning("Stopped. Cleaning up calendars used for Calendar Tetris.")}`);
-    console.log(style.dim("Press ^C again to force quit. If you do, clean up manually with:"));
+    console.log(`${style.dim("Press")} ${style.key("^C")} ${style.dim("again to force quit. If you do, clean up manually with:")}`);
     console.log(`${style.dim("npx calendar-tetris cleanup")}\n`);
 
     try {
@@ -191,7 +188,10 @@ async function runGame(optionsValue: Options): Promise<void> {
       throw new Error(`Prepared ${calendars.length} calendars; expected ${renderer.calendarCount}.`);
     }
 
-    await phase("[2/2] Resetting the board", () => renderer.resetBoard());
+    await phase("[2/2] Resetting the board", async () => {
+      await renderer.resetBoard();
+      await renderer.renderHUD(game.snapshot, 0);
+    });
     if (shuttingDown) return;
   } catch (error) {
     process.off("SIGINT", handleSignal);
@@ -416,11 +416,12 @@ async function requestCalendarAccess(
   }
 }
 
-function titleFor(optionsValue: Options): string {
+function gameTitleFor(optionsValue: Options): string {
   const details: string[] = [];
   if (!optionsValue.hud) details.push("HUD Off");
   if (optionsValue.compact) details.push("5-Column");
-  return ["Calendar Tetris", ...details].join(" · ");
+  const suffix = details.length > 0 ? style.dim(` · ${details.join(" · ")}`) : "";
+  return `${style.title("Calendar Tetris")}${suffix}`;
 }
 
 function ansi(codes: string, text: string): string {

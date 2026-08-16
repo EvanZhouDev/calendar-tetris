@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cleanupAppleScripts, cleanupJXAScripts } from "./cleanup.js";
+import { cleanupAppleScripts, cleanupJXAScripts, cleanupManagedCalendars } from "./cleanup.js";
 
 test("cleanup AppleScripts compile without contacting Calendar", () => {
   const directory = mkdtempSync(join(tmpdir(), "calendar-tetris-cleanup-"));
@@ -60,6 +60,13 @@ test("cleanup requests both permissions before mutation", () => {
   assert.match(script, /requestFullAccessToEventsWithCompletion/u);
   assert.match(script, /NSRunLoop\.currentRunLoop\.runUntilDate/u);
   assert.doesNotMatch(script, /dispatch_group/u);
+});
+
+test("cleanup presents its work as two user-facing steps", () => {
+  const source = cleanupManagedCalendars.toString();
+  assert.match(source, /\[1\/2\] Checking permissions/u);
+  assert.match(source, /\[2\/2\] Removing Game Calendars/u);
+  assert.doesNotMatch(source, /\[\d+\/4\]/u);
 });
 
 test("EventKit batches calendar removal into one commit", () => {

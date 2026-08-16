@@ -25,11 +25,14 @@ test("unknown options fail before contacting Calendar", () => {
   assert.match(result.stderr, /Unknown option: --wat/u);
 });
 
-test("startup leaves the board empty until Enter", () => {
+test("startup draws the HUD but leaves the board empty until Enter", () => {
   const source = readFileSync(cli, "utf8");
   const prompt = source.indexOf("Focus this terminal and press");
+  const hudRender = source.indexOf("renderer.renderHUD");
   const firstRender = source.indexOf("const firstRender = renderer.render");
   assert.ok(prompt >= 0);
+  assert.ok(hudRender >= 0);
+  assert.ok(hudRender < prompt);
   assert.ok(firstRender > prompt);
   assert.match(source, /callToAction\("Enter"\)/u);
   assert.match(source, /Game started\./u);
@@ -40,10 +43,11 @@ test("startup leaves the board empty until Enter", () => {
 
 test("startup output emphasizes status and keys without coloring descriptions", () => {
   const source = readFileSync(cli, "utf8");
-  assert.match(source, /style\.bold\("Setting up\."\)/u);
+  assert.match(source, /gameTitleFor\(optionsValue\).*is starting\./u);
   assert.match(source, /style\.dim\("1\."\)/u);
   assert.match(source, /style\.key\("← →"\).*style\.dim\("Move"\)/u);
   assert.match(source, /style\.callToAction\("Enter"\)/u);
+  assert.match(source, /style\.key\("\^C"\)/u);
 });
 
 test("busy rendering combines queued terminal actions into the next frame", () => {

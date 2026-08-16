@@ -230,3 +230,9 @@ test("board reset prewarms the resident worker without drawing a frame", () => {
   assert.match(source, /CalendarWorker\.start/u);
   assert.doesNotMatch(source, /this\.render/u);
 });
+
+test("setup HUD rendering does not include board runs", () => {
+  const source = CalendarRenderer.prototype.renderHUD.toString();
+  assert.match(source, /hudRuns/u);
+  assert.doesNotMatch(source, /runsForSnapshot/u);
+});

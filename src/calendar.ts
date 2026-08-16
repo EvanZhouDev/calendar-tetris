@@ -134,8 +134,17 @@ export class CalendarRenderer {
   }
 
   async render(snapshot: GameSnapshot, elapsedSeconds: number): Promise<void> {
-    if (!this.worker) this.worker = await CalendarWorker.start(ownerMarker);
     const targets = runsForSnapshot(snapshot, this.options, elapsedSeconds);
+    await this.renderTargets(targets);
+  }
+
+  async renderHUD(snapshot: GameSnapshot, elapsedSeconds: number): Promise<void> {
+    if (!this.options.hud) return;
+    await this.renderTargets(hudRuns(snapshot, elapsedSeconds));
+  }
+
+  private async renderTargets(targets: readonly CalendarRun[]): Promise<void> {
+    if (!this.worker) this.worker = await CalendarWorker.start(ownerMarker);
     const plan = planPool(this.slots, targets);
     if (plan.updates.length === 0) return;
 

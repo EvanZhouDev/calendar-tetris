@@ -13,13 +13,13 @@ export async function cleanupManagedCalendars(
 ): Promise<CleanupResult> {
   // Trigger both native permission prompts before performing any mutation.
   // macOS only presents them while authorization is undetermined.
-  progress?.("[1/4] Checking permissions");
+  progress?.("[1/2] Checking permissions");
   await runJXAScript(requestCleanupAccessScript);
 
   // Discover marker-owned calendars without changing their events. EventKit
   // removes each calendar and all of its events as one operation, so clearing
   // hundreds of events through Calendar first would only make cleanup slower.
-  progress?.("[2/4] Finding Calendar Tetris calendars");
+  progress?.("[2/2] Removing Game Calendars");
   const names = parseNames(
     await runAppleScript(discoverManagedCalendarsScript, [ownerMarker, calendarPrefix]),
   );
@@ -33,13 +33,11 @@ export async function cleanupManagedCalendars(
     // Calendar.app's AppleScript delete command cannot remove calendars on
     // current macOS. EventKit is Apple's supported calendar-removal API. Queue
     // every removal with commit=false, then commit once.
-    progress?.(`[3/4] Removing ${names.length} game calendar(s)`);
     await runJXAScript(removeCalendarsWithEventKitScript, names);
   } catch (error) {
     eventKitError = error;
   }
 
-  progress?.("[4/4] Verifying cleanup");
   const remaining = parseNames(
     await runAppleScript(listRemainingManagedCalendarsScript, [ownerMarker, calendarPrefix]),
   );
