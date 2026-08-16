@@ -10,6 +10,19 @@ interface Options {
   hud: boolean;
 }
 
+const useColor = Boolean(process.stdout.isTTY && !("NO_COLOR" in process.env));
+
+const style = {
+  title: (text: string): string => ansi("1;36", text),
+  bold: (text: string): string => ansi("1", text),
+  success: (text: string): string => ansi("1;32", text),
+  warning: (text: string): string => ansi("33", text),
+  danger: (text: string): string => ansi("1;31", text),
+  key: (text: string): string => ansi("1", text),
+  callToAction: (text: string): string => ansi("1;33", text),
+  dim: (text: string): string => ansi("2", text),
+} as const;
+
 try {
   const options = parseOptions(process.argv.slice(2));
   if (options.command === "help") showHelp();
@@ -18,7 +31,7 @@ try {
   else await runGame(options);
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
-  console.error(`\n${message}`);
+  console.error(`\n${style.danger(message)}`);
   const automationDenied = message.includes("-1743")
     || message.toLowerCase().includes("not authorized")
     || message.includes("Calendar Automation access");
@@ -67,10 +80,10 @@ Options:
 }
 
 async function runCleanup(): Promise<void> {
-  console.log("Calendar Tetris");
-  console.log("Cleaning up calendars used for Calendar Tetris.");
-  await cleanupManagedCalendars((message) => console.log(message));
-  console.log("Cleanup complete.");
+  console.log(style.title("Calendar Tetris"));
+  console.log(style.warning("Cleaning up calendars used for Calendar Tetris."));
+  await cleanupManagedCalendars((message) => console.log(formatStep(message)));
+  console.log(style.success("Cleanup complete."));
 }
 
 async function runGame(optionsValue: Options): Promise<void> {
@@ -82,16 +95,16 @@ async function runGame(optionsValue: Options): Promise<void> {
   const rules = optionsValue.compact ? compactRules : standardRules;
   const game = new TetrisGame(rules);
 
-  console.log(titleFor(optionsValue));
+  console.log(style.title(titleFor(optionsValue)));
   console.log();
   let instructionsShown = false;
   const showInstructions = (): void => {
     if (instructionsShown) return;
     instructionsShown = true;
-    console.log("Calendar Tetris is starting. While you’re waiting...\n");
-    console.log("1. Place both Calendar and this terminal in view.");
-    console.log("2. Set Calendar to Week View (⌘2) and Go to Today (⌘T).");
-    console.log("3. Scroll up to the top of Calendar.\n");
+    console.log(`${style.bold("Setting up.")} While you’re waiting...\n`);
+    console.log(`${style.dim("1.")} Place both Calendar and this terminal in view.`);
+    console.log(`${style.dim("2.")} Set Calendar to Week View (${style.key("⌘2")}) and Go to Today (${style.key("⌘T")}).`);
+    console.log(`${style.dim("3.")} Scroll up to the top of Calendar.\n`);
     console.log("You will control the game with the terminal and see the output in Calendar.\n");
   };
   await requestCalendarAccess(renderer, showInstructions);
@@ -119,8 +132,8 @@ async function runGame(optionsValue: Options): Promise<void> {
 
   const forceQuit = (): never => {
     restoreTerminal();
-    console.error("\nCleanup interrupted. Clean up manually with:");
-    console.error("npx calendar-tetris cleanup");
+    console.error(`\n${style.danger("Cleanup interrupted.")} Clean up manually with:`);
+    console.error(style.key("npx calendar-tetris cleanup"));
     process.exit(130);
   };
 
@@ -133,16 +146,16 @@ async function runGame(optionsValue: Options): Promise<void> {
     pendingInputs.length = 0;
     resolveStart?.();
     restoreTerminal();
-    console.log("\nStopped. Cleaning up calendars used for Calendar Tetris.");
-    console.log("Press ^C again to force quit. If you do, clean up manually with:");
-    console.log("npx calendar-tetris cleanup\n");
+    console.log(`\n${style.warning("Stopped. Cleaning up calendars used for Calendar Tetris.")}`);
+    console.log(style.dim("Press ^C again to force quit. If you do, clean up manually with:"));
+    console.log(`${style.dim("npx calendar-tetris cleanup")}\n`);
 
     try {
       await currentOperation?.catch(() => {});
       await activeRender?.catch(() => {});
       await renderer.close().catch(() => {});
       await cleanupManagedCalendars();
-      console.log("Cleanup complete.");
+      console.log(style.success("Cleanup complete."));
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
       console.error("Cleanup incomplete. Run: npx calendar-tetris cleanup");
@@ -158,7 +171,7 @@ async function runGame(optionsValue: Options): Promise<void> {
   process.on("SIGTERM", handleSignal);
 
   const phase = async <T>(label: string, operation: () => Promise<T>): Promise<T> => {
-    console.log(label);
+    console.log(formatStep(label));
     const promise = operation();
     currentOperation = promise;
     try {
@@ -188,10 +201,10 @@ async function runGame(optionsValue: Options): Promise<void> {
     throw error;
   }
 
-  console.log("\nSetup complete. Focus this terminal and press Enter.\n");
-  console.log("← → Move   ↑ Rotate   ↓ Drop   Space Hard drop");
-  console.log("C Hold     R Restart  Q Quit\n");
-  process.stdout.write("> ");
+  console.log(`\n${style.success("Setup complete.")}\n`);
+  console.log(`${style.key("← →")} ${style.dim("Move")}   ${style.key("↑")} ${style.dim("Rotate")}   ${style.key("↓")} ${style.dim("Drop")}   ${style.key("Space")} ${style.dim("Hard drop")}`);
+  console.log(`${style.key("C")} ${style.dim("Hold")}     ${style.key("R")} ${style.dim("Restart")}  ${style.key("Q")} ${style.dim("Quit")}\n`);
+  console.log(`Focus this terminal and press ${style.callToAction("Enter")} to start.\n`);
   await new Promise<void>((resolve) => {
     resolveStart = resolve;
     startListener = resolve;
@@ -202,6 +215,7 @@ async function runGame(optionsValue: Options): Promise<void> {
   if (startListener) process.stdin.off("data", startListener);
   startListener = undefined;
   if (shuttingDown) return;
+  console.log(`${style.success("Game started.")}\n`);
 
   gameStartedAt = performance.now();
   const firstRender = renderer.render(game.snapshot, 0);
@@ -231,7 +245,7 @@ async function runGame(optionsValue: Options): Promise<void> {
   const showGameOver = (): void => {
     if (game.gameOver && !gameOverShown) {
       gameOverShown = true;
-      console.log("\nGAME OVER. Press R to restart.");
+      console.log(`\n${style.danger("GAME OVER.")} Press ${style.key("R")} to restart.`);
     }
   };
 
@@ -243,7 +257,7 @@ async function runGame(optionsValue: Options): Promise<void> {
 
   const stopAfterRenderError = (error: unknown): void => {
     if (shuttingDown) return;
-    console.error(`\nCalendar rendering stopped: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`\n${style.danger("Calendar rendering stopped:")} ${error instanceof Error ? error.message : String(error)}`);
     void shutdown();
   };
 
@@ -275,9 +289,19 @@ async function runGame(optionsValue: Options): Promise<void> {
   };
 
   function continueInputQueue(): void {
-    const next = pendingInputs.shift();
-    if (next) dispatchInput(next);
-    else armGravity();
+    const queued = pendingInputs.splice(0);
+    if (queued.length === 0) {
+      armGravity();
+      return;
+    }
+    // Calendar can finish only one frame at a time. Apply every key received
+    // during that frame, then draw their combined result once instead of
+    // making the player wait through a stale frame for every queued key.
+    renderTransition(() => {
+      let changed = false;
+      for (const input of queued) changed = applyInput(input) || changed;
+      return changed;
+    });
   }
 
   function armGravity(): void {
@@ -286,7 +310,7 @@ async function runGame(optionsValue: Options): Promise<void> {
     gravityTimer = setTimeout(() => {
       gravityTimer = undefined;
       renderTransition(() => game.softDrop());
-    }, 800);
+    }, 600);
   }
 
   function dispatchInput(input: string): void {
@@ -297,38 +321,33 @@ async function runGame(optionsValue: Options): Promise<void> {
       pendingInputs.push(input);
       return;
     }
+    renderTransition(() => applyInput(input));
+  }
+
+  function applyInput(input: string): boolean {
     switch (input) {
       case "\u001B[D":
-        renderTransition(() => game.moveLeft());
-        break;
+        return game.moveLeft();
       case "\u001B[C":
-        renderTransition(() => game.moveRight());
-        break;
+        return game.moveRight();
       case "\u001B[A":
-        renderTransition(() => game.rotateClockwise());
-        break;
+        return game.rotateClockwise();
       case "\u001B[B":
-        renderTransition(() => game.softDrop());
-        break;
+        return game.softDrop();
       case " ":
-        renderTransition(() => game.hardDrop());
-        break;
+        return game.hardDrop();
       case "c":
       case "C":
-        renderTransition(() => game.hold());
-        break;
+        return game.hold();
       case "r":
       case "R":
         clearGameOver();
-        renderTransition(() => {
-          game.reset();
-          gameStartedAt = performance.now();
-          displayedElapsedSeconds = 0;
-          return true;
-        });
-        break;
+        game.reset();
+        gameStartedAt = performance.now();
+        displayedElapsedSeconds = 0;
+        return true;
       default:
-        continueInputQueue();
+        return false;
     }
   }
 
@@ -372,8 +391,8 @@ async function requestCalendarAccess(
   whileWaiting: () => void,
 ): Promise<void> {
   const showPermissionMessage = (): void => {
-    console.log("Calendar Tetris needs permissions to control Calendar.");
-    console.log("Choose Allow when the permission prompt appears.\n");
+    console.log(style.warning("Calendar Tetris needs permissions to control Calendar."));
+    console.log(`Choose ${style.key("Allow")} when the permission prompt appears.\n`);
   };
   const access = renderer.requestAccess().then(
     () => ({ granted: true as const }),
@@ -402,4 +421,12 @@ function titleFor(optionsValue: Options): string {
   if (!optionsValue.hud) details.push("HUD Off");
   if (optionsValue.compact) details.push("5-Column");
   return ["Calendar Tetris", ...details].join(" · ");
+}
+
+function ansi(codes: string, text: string): string {
+  return useColor ? `\u001B[${codes}m${text}\u001B[0m` : text;
+}
+
+function formatStep(message: string): string {
+  return message.replace(/^(\[\d+\/\d+\])/u, (counter) => style.dim(counter));
 }

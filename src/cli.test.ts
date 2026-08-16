@@ -27,18 +27,30 @@ test("unknown options fail before contacting Calendar", () => {
 
 test("startup leaves the board empty until Enter", () => {
   const source = readFileSync(cli, "utf8");
-  const prompt = source.indexOf("Setup complete. Focus this terminal and press Enter.");
+  const prompt = source.indexOf("Focus this terminal and press");
   const firstRender = source.indexOf("const firstRender = renderer.render");
   assert.ok(prompt >= 0);
   assert.ok(firstRender > prompt);
+  assert.match(source, /callToAction\("Enter"\)/u);
+  assert.match(source, /Game started\./u);
   assert.doesNotMatch(source, /Drawing first piece/u);
   assert.match(source, /\[1\/2\]/u);
   assert.match(source, /\[2\/2\]/u);
 });
 
-test("busy rendering queues every terminal action", () => {
+test("startup output emphasizes status and keys without coloring descriptions", () => {
+  const source = readFileSync(cli, "utf8");
+  assert.match(source, /style\.bold\("Setting up\."\)/u);
+  assert.match(source, /style\.dim\("1\."\)/u);
+  assert.match(source, /style\.key\("← →"\).*style\.dim\("Move"\)/u);
+  assert.match(source, /style\.callToAction\("Enter"\)/u);
+});
+
+test("busy rendering combines queued terminal actions into the next frame", () => {
   const source = readFileSync(cli, "utf8");
   assert.match(source, /pendingInputs\.push\(input\)/u);
-  assert.match(source, /pendingInputs\.shift\(\)/u);
+  assert.match(source, /pendingInputs\.splice\(0\)/u);
+  assert.match(source, /for \(const input of queued\)/u);
+  assert.doesNotMatch(source, /pendingInputs\.shift\(\)/u);
   assert.doesNotMatch(source, /pendingInput = input/u);
 });
