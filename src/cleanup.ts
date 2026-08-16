@@ -97,12 +97,30 @@ on run argv
     end repeat
     set outputLines to {}
     tell application "Calendar"
+        -- Some built-in/subscribed calendars fail when Calendar is asked for
+        -- their EventKit identifier. Inspect names first so we only request an
+        -- identifier from calendars that could belong to this game.
         repeat with calendarReference in every calendar
             set calendarName to name of calendarReference
-            set calendarID to calendarIdentifier of calendarReference
-            set isRecorded to my listContains(recordedIdentifiers, calendarID)
-            if description of calendarReference is ownerMarker and (calendarName starts with namePrefix or isRecorded) then
-                set end of outputLines to calendarID & tab & calendarName
+            if calendarName starts with namePrefix then
+                if description of calendarReference is ownerMarker then
+                    set calendarID to calendarIdentifier of calendarReference
+                    set end of outputLines to calendarID & tab & calendarName
+                end if
+            end if
+        end repeat
+
+        -- A recorded calendar may have been renamed. Resolve those identifiers
+        -- directly instead of reading the identifier of every user calendar.
+        repeat with recordedIdentifier in recordedIdentifiers
+            set calendarID to contents of recordedIdentifier
+            set matches to every calendar whose calendarIdentifier is calendarID
+            if (count of matches) is 1 then
+                set calendarReference to item 1 of matches
+                set calendarName to name of calendarReference
+                if description of calendarReference is ownerMarker and not my outputContainsID(outputLines, calendarID) then
+                    set end of outputLines to calendarID & tab & calendarName
+                end if
             end if
         end repeat
     end tell
@@ -110,12 +128,12 @@ on run argv
     return outputLines as text
 end run
 
-on listContains(values, targetValue)
-    repeat with candidate in values
-        if contents of candidate is targetValue then return true
+on outputContainsID(outputLines, calendarID)
+    repeat with outputLine in outputLines
+        if contents of outputLine starts with calendarID & tab then return true
     end repeat
     return false
-end listContains
+end outputContainsID
 `;
 
 const clearManagedCalendarsScript = String.raw`
