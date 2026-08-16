@@ -57,6 +57,18 @@ test("startup title shows only the compact mode suffix", () => {
   assert.doesNotMatch(source, / · 5-Column/u);
 });
 
+test("first-run permission copy precedes setup instructions", () => {
+  const source = readFileSync(cli, "utf8");
+  const permissionCopy = source.indexOf("Calendar permissions required");
+  const accessRequest = source.indexOf("await requestCalendarPermissions()");
+  assert.ok(permissionCopy >= 0);
+  assert.ok(accessRequest > permissionCopy);
+  assert.match(source, /await requestCalendarAccess\(\);\s+showInstructions\(\);/u);
+  assert.match(source, /Calendar Tetris manages its own game calendars and does not affect your calendars\./u);
+  assert.match(source, /Two permission prompts will appear\./u);
+  assert.match(source, /Choose Allow both times\./u);
+});
+
 test("busy rendering combines queued terminal actions into the next frame", () => {
   const source = readFileSync(cli, "utf8");
   assert.match(source, /pendingInputs\.push\(input\)/u);

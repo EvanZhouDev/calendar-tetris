@@ -62,6 +62,13 @@ test("cleanup requests both permissions before mutation", () => {
   assert.doesNotMatch(script, /dispatch_group/u);
 });
 
+test("permission status can be checked without triggering a prompt", () => {
+  const script = cleanupJXAScripts.accessStatus;
+  assert.match(script, /authorizationStatusForEntityType/u);
+  assert.doesNotMatch(script, /requestFullAccessToEventsWithCompletion/u);
+  assert.doesNotMatch(script, /Application\("Calendar"\)/u);
+});
+
 test("cleanup presents its work as two user-facing steps", () => {
   const source = cleanupManagedCalendars.toString();
   assert.match(source, /\[1\/2\] Checking permissions/u);

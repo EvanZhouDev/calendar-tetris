@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 
 import { CalendarRenderer } from "./calendar.js";
-import { cleanupManagedCalendars } from "./cleanup.js";
+import {
+  cleanupManagedCalendars,
+  hasFullCalendarAccess,
+  requestCalendarPermissions,
+} from "./cleanup.js";
 import { compactRules, standardRules, TetrisGame } from "./game.js";
 
 interface Options {
@@ -104,7 +108,7 @@ async function runGame(optionsValue: Options): Promise<void> {
     console.log(`${style.dim("3.")} Scroll up to the top of Calendar.\n`);
     console.log("You will control the game with the terminal and see the output in Calendar.\n");
   };
-  await requestCalendarAccess(renderer, showInstructions);
+  await requestCalendarAccess();
   showInstructions();
 
   let shuttingDown = false;
@@ -386,34 +390,15 @@ async function runGame(optionsValue: Options): Promise<void> {
   armGravity();
 }
 
-async function requestCalendarAccess(
-  renderer: CalendarRenderer,
-  whileWaiting: () => void,
-): Promise<void> {
-  const showPermissionMessage = (): void => {
-    console.log(style.warning("Calendar Tetris needs permissions to control Calendar."));
-    console.log(`Choose ${style.key("Allow")} when the permission prompt appears.\n`);
-  };
-  const access = renderer.requestAccess().then(
-    () => ({ granted: true as const }),
-    (error: unknown) => ({ granted: false as const, error }),
-  );
-  const firstResult = await Promise.race([
-    access,
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), 1_500)),
-  ]);
-
-  if (firstResult === null) {
-    showPermissionMessage();
-    whileWaiting();
-    const finalResult = await access;
-    if (!finalResult.granted) throw finalResult.error;
-    return;
+async function requestCalendarAccess(): Promise<void> {
+  if (!(await hasFullCalendarAccess())) {
+    console.log(style.callToAction("Calendar permissions required"));
+    console.log();
+    console.log("Calendar Tetris manages its own game calendars and does not affect your calendars.");
+    console.log();
+    console.log(`Two permission prompts will appear. ${style.callToAction("Choose Allow both times.")}\n`);
   }
-  if (!firstResult.granted) {
-    showPermissionMessage();
-    throw firstResult.error;
-  }
+  await requestCalendarPermissions();
 }
 
 function gameTitleFor(optionsValue: Options): string {

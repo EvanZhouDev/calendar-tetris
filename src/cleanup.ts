@@ -8,13 +8,21 @@ export interface CleanupResult {
 
 export type CleanupProgress = (message: string) => void;
 
+export async function hasFullCalendarAccess(): Promise<boolean> {
+  return await runJXAScript(calendarAccessStatusScript) === "granted";
+}
+
+export async function requestCalendarPermissions(): Promise<void> {
+  await runJXAScript(requestCalendarPermissionsScript);
+}
+
 export async function cleanupManagedCalendars(
   progress?: CleanupProgress,
 ): Promise<CleanupResult> {
   // Trigger both native permission prompts before performing any mutation.
   // macOS only presents them while authorization is undetermined.
   progress?.("[1/2] Checking permissions");
-  await runJXAScript(requestCleanupAccessScript);
+  await requestCalendarPermissions();
 
   // Discover marker-owned calendars without changing their events. EventKit
   // removes each calendar and all of its events as one operation, so clearing
@@ -188,7 +196,16 @@ function eventKitError(prefix, reference) {
 }
 `;
 
-const requestCleanupAccessScript = String.raw`
+const calendarAccessStatusScript = String.raw`
+ObjC.import("EventKit");
+
+function run() {
+  const status = Number($.EKEventStore.authorizationStatusForEntityType($.EKEntityTypeEvent));
+  return status === Number($.EKAuthorizationStatusAuthorized) ? "granted" : "missing";
+}
+`;
+
+const requestCalendarPermissionsScript = String.raw`
 ObjC.import("EventKit");
 ObjC.import("Foundation");
 
@@ -235,6 +252,7 @@ export const cleanupAppleScripts = {
 } as const;
 
 export const cleanupJXAScripts = {
-  requestAccess: requestCleanupAccessScript,
+  accessStatus: calendarAccessStatusScript,
+  requestAccess: requestCalendarPermissionsScript,
   removeCalendars: removeCalendarsWithEventKitScript,
 } as const;
