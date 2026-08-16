@@ -37,8 +37,8 @@ test("cleanup never depends on EventKit calendar identifiers", () => {
 });
 
 test("cleanup recognizes only owned calendars and empty legacy partials", () => {
-  assert.match(cleanupAppleScripts.clearAll, /whose description is ownerMarker/u);
-  assert.match(cleanupAppleScripts.clearAll, /descriptionIsBlank and \(count of events/u);
+  assert.match(cleanupAppleScripts.discover, /whose description is ownerMarker/u);
+  assert.match(cleanupAppleScripts.discover, /descriptionIsBlank and \(count of events/u);
 });
 
 test("cleanup uses fresh postconditions instead of save barriers", () => {
@@ -48,11 +48,10 @@ test("cleanup uses fresh postconditions instead of save barriers", () => {
   }
 });
 
-test("cleanup clears every calendar in one AppleScript batch", () => {
-  assert.match(cleanupAppleScripts.clearAll, /repeat with calendarReference in ownedCalendars/u);
-  assert.match(cleanupAppleScripts.clearAll, /delete every event/u);
-  assert.doesNotMatch(cleanupAppleScripts.clearAll, /ignoring application responses/u);
-  assert.doesNotMatch(cleanupAppleScripts.clearAll, /delete targetCalendar/u);
+test("cleanup never clears events individually before removing their calendar", () => {
+  assert.doesNotMatch(cleanupAppleScripts.discover, /delete every event/u);
+  assert.doesNotMatch(cleanupAppleScripts.discover, /delete targetCalendar/u);
+  assert.doesNotMatch(cleanupAppleScripts.discover, /set description of/u);
 });
 
 test("cleanup requests both permissions before mutation", () => {

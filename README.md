@@ -55,12 +55,12 @@ If the process was force-quit before automatic cleanup completed, run:
 npx calendar-tetris cleanup
 ~~~
 
-Cleanup verifies ownership markers and event ownership before deleting
-anything. It can also recover an empty partial calendar from an interrupted
-setup, but never removes a nonempty unowned calendar. Event clearing is one
-AppleScript batch; calendar removal is one EventKit commit. Before changing
-anything, cleanup requests Calendar Automation and Full Calendar Access when
-macOS has not already decided those permissions.
+Cleanup verifies calendar ownership markers before deleting anything. It also
+recognizes an empty partial calendar from an interrupted setup, but never
+removes a nonempty unowned calendar. Cleanup removes all game calendars and
+their contained events directly in one EventKit commit; it does not delete
+events one at a time. Before changing anything, it requests Calendar Automation
+and Full Calendar Access when macOS has not already decided those permissions.
 
 ## Development
 

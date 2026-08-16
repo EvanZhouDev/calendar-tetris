@@ -69,7 +69,7 @@ Options:
 async function runCleanup(): Promise<void> {
   console.log("Calendar Tetris");
   console.log("Cleaning up calendars used for Calendar Tetris.");
-  await cleanupManagedCalendars();
+  await cleanupManagedCalendars((message) => console.log(message));
   console.log("Cleanup complete.");
 }
 
