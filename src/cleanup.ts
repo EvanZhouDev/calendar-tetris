@@ -1,87 +1,113 @@
 import { calendarPrefix, ownerMarker } from "./calendar.js";
 import { runAppleScript } from "./applescript.js";
-import { clearRecordedCalendars, loadState } from "./state.js";
+import { clearRecordedCalendars } from "./state.js";
 
 export interface CleanupResult {
   removed: string[];
 }
 
-interface Candidate {
-  identifier: string;
-  name: string;
-}
-
 export async function cleanupManagedCalendars(): Promise<CleanupResult> {
-  const state = await loadState();
-  const recordedIdentifiers = state.calendars
-    .map((calendar) => calendar.identifier)
-    .filter(Boolean);
-  const candidates = parseCandidates(
-    await runAppleScript(listManagedCalendarsScript, [
-      ownerMarker,
-      calendarPrefix,
-      String(recordedIdentifiers.length),
-      ...recordedIdentifiers,
-    ]),
+  const candidates = parseNames(
+    await retryTransient(() =>
+      runAppleScript(listManagedCalendarsScript, [ownerMarker, calendarPrefix]),
+    ),
   );
   if (candidates.length === 0) {
     await clearRecordedCalendars();
     return { removed: [] };
   }
 
-  await runAppleScript(clearManagedCalendarsScript, [
-    ownerMarker,
-    String(candidates.length),
-    ...candidates.map((calendar) => calendar.identifier),
-  ]);
-
   const failures: string[] = [];
-  for (const candidate of candidates) {
-    let removed = false;
-    let lastError: unknown;
-    for (const wait of [0, 250, 750, 1_500]) {
-      if (wait > 0) await delay(wait);
-      try {
-        await runAppleScript(deleteManagedCalendarScript, [
-          ownerMarker,
-          candidate.identifier,
-        ]);
-      } catch (error) {
-        // Calendar frequently reports -10000 after accepting a deletion. The
-        // identifier existence check is the postcondition that matters.
-        lastError = error;
-      }
-      if (!(await managedCalendarExists(candidate.identifier))) {
-        removed = true;
-        break;
-      }
-    }
-    if (!removed) {
-      const detail = lastError instanceof Error ? `: ${lastError.message}` : "";
-      failures.push(`${candidate.name}${detail}`);
+  for (const name of candidates) {
+    try {
+      await clearCalendar(name);
+      await deleteCalendar(name);
+    } catch (error) {
+      failures.push(`${name}\n    ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   if (failures.length > 0) {
     throw new Error(
-      `Calendar would not remove ${failures.length} empty game calendar(s):\n${failures.join("\n")}`,
+      [
+        "Cleanup incomplete.",
+        `Calendar still contains ${failures.length} Calendar Tetris calendar(s):`,
+        ...failures.map((failure) => `  ${failure}`),
+        "",
+        "Try again: npx calendar-tetris cleanup",
+      ].join("\n"),
     );
   }
+
   await clearRecordedCalendars();
-  return { removed: candidates.map((candidate) => candidate.name) };
+  return { removed: candidates };
 }
 
-async function managedCalendarExists(identifier: string): Promise<boolean> {
-  return (await runAppleScript(managedCalendarExistsScript, [identifier])) === "true";
+async function clearCalendar(name: string): Promise<void> {
+  let lastError: unknown;
+  for (const wait of [0, 250, 750, 1_500, 2_500]) {
+    if (wait > 0) await delay(wait);
+    try {
+      await runAppleScript(clearManagedCalendarScript, [ownerMarker, name]);
+    } catch (error) {
+      lastError = error;
+    }
+    const eventCount = await managedEventCount(name);
+    if (eventCount === null || eventCount === 0) return;
+  }
+  const detail = lastError instanceof Error ? lastError.message : "Calendar kept the events.";
+  throw new Error(`Could not clear its ${await managedEventCount(name)} event(s). Last response: ${detail}`);
 }
 
-function parseCandidates(output: string): Candidate[] {
+async function deleteCalendar(name: string): Promise<void> {
+  let lastError: unknown;
+  for (const wait of [0, 250, 750, 1_500, 2_500]) {
+    if (wait > 0) await delay(wait);
+    try {
+      await runAppleScript(deleteManagedCalendarScript, [ownerMarker, name]);
+    } catch (error) {
+      // Calendar often returns -10000 after accepting deletion. The fresh
+      // existence query below is the authoritative postcondition.
+      lastError = error;
+    }
+    if (!(await managedCalendarExists(name))) return;
+  }
+  const detail = lastError instanceof Error ? lastError.message : "Calendar kept the calendar.";
+  throw new Error(`Could not remove it. Last response: ${detail}`);
+}
+
+async function managedEventCount(name: string): Promise<number | null> {
+  const output = await retryTransient(() =>
+    runAppleScript(managedEventCountScript, [ownerMarker, name]),
+  );
+  return output === "absent" ? null : Number.parseInt(output, 10);
+}
+
+async function managedCalendarExists(name: string): Promise<boolean> {
+  return (
+    (await retryTransient(() =>
+      runAppleScript(managedCalendarExistsScript, [ownerMarker, name]),
+    )) === "true"
+  );
+}
+
+async function retryTransient<T>(operation: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (const wait of [0, 250, 750, 1_500]) {
+    if (wait > 0) await delay(wait);
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (!(error instanceof Error) || !error.message.includes("-10000")) throw error;
+    }
+  }
+  throw lastError;
+}
+
+function parseNames(output: string): string[] {
   if (!output) return [];
-  return output.split(/\r?\n/u).map((line) => {
-    const [identifier, name] = line.split("\t");
-    if (!identifier || !name) throw new Error(`Calendar returned an invalid cleanup record: ${line}`);
-    return { identifier, name };
-  });
+  return [...new Set(output.split(/\r?\n/u).filter(Boolean))];
 }
 
 function delay(milliseconds: number): Promise<void> {
@@ -92,80 +118,77 @@ const listManagedCalendarsScript = String.raw`
 on run argv
     set ownerMarker to item 1 of argv
     set namePrefix to item 2 of argv
-    set identifierCount to (item 3 of argv) as integer
-    set recordedIdentifiers to {}
-    repeat with identifierIndex from 1 to identifierCount
-        set end of recordedIdentifiers to item (identifierIndex + 3) of argv
-    end repeat
-    set outputLines to {}
+    set outputNames to {}
     tell application "Calendar"
-        -- Some built-in/subscribed calendars fail when Calendar is asked for
-        -- their EventKit identifier. Inspect names first so we only request an
-        -- identifier from calendars that could belong to this game.
-        repeat with calendarReference in every calendar
-            set calendarName to name of calendarReference
-            if calendarName starts with namePrefix then
-                if description of calendarReference is ownerMarker then
-                    set calendarID to calendarIdentifier of calendarReference
-                    set end of outputLines to calendarID & tab & calendarName
-                end if
-            end if
+        -- The marker is the primary identity and continues to work if a user
+        -- renames a game calendar. No EventKit identifier is needed.
+        set ownedCalendars to every calendar whose description is ownerMarker
+        repeat with calendarReference in ownedCalendars
+            set end of outputNames to name of calendarReference
         end repeat
 
-        -- A recorded calendar may have been renamed. Resolve those identifiers
-        -- directly instead of reading the identifier of every user calendar.
-        repeat with recordedIdentifier in recordedIdentifiers
-            set calendarID to contents of recordedIdentifier
-            set matches to every calendar whose calendarIdentifier is calendarID
-            if (count of matches) is 1 then
-                set calendarReference to item 1 of matches
-                set calendarName to name of calendarReference
-                if description of calendarReference is ownerMarker and not my outputContainsID(outputLines, calendarID) then
-                    set end of outputLines to calendarID & tab & calendarName
+        -- Recover empty partial calendars left by older setup builds that made
+        -- the calendar but lost its description property.
+        repeat with calendarReference in every calendar
+            set calendarName to name of calendarReference
+            if calendarName starts with namePrefix and not my listContains(outputNames, calendarName) then
+                set currentDescription to description of calendarReference
+                set descriptionIsBlank to currentDescription is missing value
+                if not descriptionIsBlank then set descriptionIsBlank to currentDescription is ""
+                if descriptionIsBlank and (count of events of calendarReference) is 0 then
+                    set description of calendarReference to ownerMarker
+                    set end of outputNames to calendarName
                 end if
             end if
         end repeat
     end tell
     set AppleScript's text item delimiters to linefeed
-    return outputLines as text
+    return outputNames as text
 end run
 
-on outputContainsID(outputLines, calendarID)
-    repeat with outputLine in outputLines
-        if contents of outputLine starts with calendarID & tab then return true
+on listContains(values, targetValue)
+    repeat with candidate in values
+        if contents of candidate is targetValue then return true
     end repeat
     return false
-end outputContainsID
+end listContains
 `;
 
-const clearManagedCalendarsScript = String.raw`
+const clearManagedCalendarScript = String.raw`
 on run argv
     set ownerMarker to item 1 of argv
-    set identifierCount to (item 2 of argv) as integer
-    set ownedCalendars to {}
+    set calendarName to item 2 of argv
     tell application "Calendar"
         with timeout of 3600 seconds
-            repeat with identifierIndex from 1 to identifierCount
-                set calendarID to item (identifierIndex + 2) of argv
-                set matches to every calendar whose calendarIdentifier is calendarID
-                if (count of matches) is 1 then
-                    set targetCalendar to item 1 of matches
-                    if description of targetCalendar is not ownerMarker then error "Refusing to clear an unowned calendar"
-                    tell targetCalendar to set eventDescriptions to description of every event
-                    repeat with eventDescription in eventDescriptions
-                        if contents of eventDescription is not ownerMarker then error "A game calendar contains an unowned event: " & (name of targetCalendar)
-                    end repeat
-                    set end of ownedCalendars to targetCalendar
-                end if
+            set matches to every calendar whose name is calendarName
+            if (count of matches) is 0 then return "absent"
+            if (count of matches) is not 1 then error "More than one calendar is named " & calendarName
+            set targetCalendar to item 1 of matches
+            if description of targetCalendar is not ownerMarker then error "Refusing to clear an unowned calendar"
+            set eventDescriptions to description of every event of targetCalendar
+            repeat with eventDescription in eventDescriptions
+                if contents of eventDescription is not ownerMarker then error "Refusing to clear a calendar containing an unowned event"
             end repeat
             ignoring application responses
-                repeat with targetCalendar in ownedCalendars
-                    tell contents of targetCalendar to delete every event
-                end repeat
+                tell targetCalendar to delete every event
             end ignoring
-            get count of calendars
-            save
+            return "submitted"
         end timeout
+    end tell
+end run
+`;
+
+const managedEventCountScript = String.raw`
+on run argv
+    set ownerMarker to item 1 of argv
+    set calendarName to item 2 of argv
+    tell application "Calendar"
+        set matches to every calendar whose name is calendarName
+        if (count of matches) is 0 then return "absent"
+        if (count of matches) is not 1 then error "More than one calendar is named " & calendarName
+        set targetCalendar to item 1 of matches
+        if description of targetCalendar is not ownerMarker then error "Refusing to inspect an unowned calendar"
+        return count of events of targetCalendar
     end tell
 end run
 `;
@@ -173,19 +196,19 @@ end run
 const deleteManagedCalendarScript = String.raw`
 on run argv
     set ownerMarker to item 1 of argv
-    set calendarID to item 2 of argv
+    set calendarName to item 2 of argv
     tell application "Calendar"
         with timeout of 3600 seconds
-            set matches to every calendar whose calendarIdentifier is calendarID
-            if (count of matches) is 1 then
-                set targetCalendar to item 1 of matches
-                if description of targetCalendar is not ownerMarker then error "Refusing to delete an unowned calendar"
-                if (count of events of targetCalendar) is not 0 then error "Refusing to delete a nonempty game calendar"
-                ignoring application responses
-                    delete targetCalendar
-                end ignoring
-                get count of calendars
-            end if
+            set matches to every calendar whose name is calendarName
+            if (count of matches) is 0 then return "absent"
+            if (count of matches) is not 1 then error "More than one calendar is named " & calendarName
+            set targetCalendar to item 1 of matches
+            if description of targetCalendar is not ownerMarker then error "Refusing to delete an unowned calendar"
+            if (count of events of targetCalendar) is not 0 then error "Calendar still contains events" number -10000
+            ignoring application responses
+                delete targetCalendar
+            end ignoring
+            return "submitted"
         end timeout
     end tell
 end run
@@ -193,14 +216,21 @@ end run
 
 const managedCalendarExistsScript = String.raw`
 on run argv
-    set calendarID to item 1 of argv
-    tell application "Calendar" to return (count of (every calendar whose calendarIdentifier is calendarID)) is greater than 0
+    set ownerMarker to item 1 of argv
+    set calendarName to item 2 of argv
+    tell application "Calendar"
+        set matches to every calendar whose name is calendarName
+        if (count of matches) is 0 then return false
+        if (count of matches) is not 1 then return true
+        return description of item 1 of matches is ownerMarker
+    end tell
 end run
 `;
 
 export const cleanupAppleScripts = {
   list: listManagedCalendarsScript,
-  clear: clearManagedCalendarsScript,
+  clearOne: clearManagedCalendarScript,
+  eventCount: managedEventCountScript,
   deleteOne: deleteManagedCalendarScript,
   exists: managedCalendarExistsScript,
 } as const;
