@@ -581,7 +581,19 @@ on run argv
             set matches to every calendar whose name is calendarName
             if (count of matches) is 1 then
                 set targetCalendar to item 1 of matches
-                if description of targetCalendar is not ownerMarker then error "Refusing to use unowned calendar " & calendarName
+                set currentDescription to description of targetCalendar
+                if currentDescription is not ownerMarker then
+                    set descriptionIsBlank to currentDescription is missing value
+                    if not descriptionIsBlank then set descriptionIsBlank to currentDescription is ""
+                    if descriptionIsBlank and (count of events of targetCalendar) is 0 then
+                        -- Calendar can accept a no-reply creation while dropping
+                        -- some properties. An empty exact-name calendar is the
+                        -- recoverable partial result of that operation.
+                        set description of targetCalendar to ownerMarker
+                    else
+                        error "Refusing to use an unowned or nonempty calendar " & calendarName
+                    end if
+                end if
                 return calendarName
             end if
             if (count of matches) is greater than 1 then error "More than one calendar is named " & calendarName
@@ -610,7 +622,16 @@ on run argv
             set matches to every calendar whose name is calendarName
             if (count of matches) is not 1 then error "Calendar has not finished creating " & calendarName number -10000
             set targetCalendar to item 1 of matches
-            if description of targetCalendar is not ownerMarker then error "Refusing to use unowned calendar " & calendarName
+            set currentDescription to description of targetCalendar
+            if currentDescription is not ownerMarker then
+                set descriptionIsBlank to currentDescription is missing value
+                if not descriptionIsBlank then set descriptionIsBlank to currentDescription is ""
+                if descriptionIsBlank and (count of events of targetCalendar) is 0 then
+                    set description of targetCalendar to ownerMarker
+                else
+                    error "Refusing to use an unowned or nonempty calendar " & calendarName
+                end if
+            end if
             set targetColor to {redValue, greenValue, blueValue}
             if color of targetCalendar is not targetColor then set color of targetCalendar to targetColor
             return calendarName
