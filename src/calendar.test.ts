@@ -86,6 +86,29 @@ test("compact HUD uses the requested piece labels", () => {
   }
 });
 
+test("both boards fill the midnight-to-noon Calendar viewport", () => {
+  const cases = [
+    { rules: standardRules, compact: false, column: 0 },
+    { rules: compactRules, compact: true, column: 0 },
+  ] as const;
+  for (const { rules, compact, column } of cases) {
+    const game = new TetrisGame(rules, () => 0);
+    const snapshot = game.snapshot;
+    const settled = snapshot.settled.map((row) => [...row]);
+    settled[settled.length - 1]![column] = snapshot.active.id;
+    const runs = runsForSnapshot(
+      { ...snapshot, settled, activeCells: [], gameOver: true },
+      { compact, hud: false },
+      0,
+    );
+    const boardRuns = runs.filter((run) => run.key.startsWith("board/"));
+    assert.ok(boardRuns.length > 0);
+    assert.ok(boardRuns.every((run) => run.start % 86_400 >= 0));
+    assert.ok(boardRuns.every((run) => run.end % 86_400 <= 12 * 60 * 60));
+    assert.ok(boardRuns.some((run) => run.end % 86_400 === 12 * 60 * 60));
+  }
+});
+
 test("pool planning preserves unchanged event slots", () => {
   const game = new TetrisGame(compactRules, () => 0);
   const targets = runsForSnapshot(game.snapshot, { compact: true, hud: false }, 0);

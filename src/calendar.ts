@@ -18,7 +18,7 @@ const execFileAsync = promisify(execFile);
 
 export const ownerMarker = "Owned by Calendar Tetris v1";
 export const calendarPrefix = "__CALENDAR_TETRIS__";
-const boardStartSeconds = 60 * 60;
+const boardStartSeconds = 0;
 const daySeconds = 24 * 60 * 60;
 const sessionID = randomUUID();
 
@@ -275,10 +275,10 @@ function compactBoardRuns(frame: Array<Array<PieceID | null>>): CalendarRun[] {
   const rowSeconds = 60 * 60;
   for (let column = 0; column < 5; column += 1) {
     let start = 0;
-    while (start < 10) {
+    while (start < frame.length) {
       const color = frame[start]?.[column] ?? null;
       let end = start + 1;
-      while (end < 10 && (frame[end]?.[column] ?? null) === color) end += 1;
+      while (end < frame.length && (frame[end]?.[column] ?? null) === color) end += 1;
       if (color) output.push(boardRun(column + 1, start, end, "full", color, rowSeconds));
       start = end;
     }
@@ -291,10 +291,10 @@ function standardBoardRuns(frame: Array<Array<PieceID | null>>): CalendarRun[] {
   const rowSeconds = 30 * 60;
   for (let day = 0; day < 5; day += 1) {
     let start = 0;
-    while (start < 20) {
+    while (start < frame.length) {
       const pair = [frame[start]?.[day * 2] ?? null, frame[start]?.[day * 2 + 1] ?? null] as const;
       let end = start + 1;
-      while (end < 20) {
+      while (end < frame.length) {
         const next = [frame[end]?.[day * 2] ?? null, frame[end]?.[day * 2 + 1] ?? null] as const;
         if (next[0] !== pair[0] || next[1] !== pair[1]) break;
         end += 1;

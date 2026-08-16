@@ -29,6 +29,8 @@ export interface PieceDefinition {
 export interface Rules {
   mode: GameMode;
   width: number;
+  matrixHeight: number;
+  bufferRows: number;
   height: number;
   pieces: readonly PieceDefinition[];
 }
@@ -43,6 +45,8 @@ export interface ActivePiece {
 export interface GameSnapshot {
   width: number;
   height: number;
+  matrixHeight: number;
+  bufferRows: number;
   settled: ReadonlyArray<ReadonlyArray<PieceID | null>>;
   active: ActivePiece;
   activeCells: readonly Point[];
@@ -85,14 +89,18 @@ const compactPieces: readonly PieceDefinition[] = [
 export const standardRules: Rules = {
   mode: "standard",
   width: 10,
-  height: 20,
+  matrixHeight: 20,
+  bufferRows: 4,
+  height: 24,
   pieces: standardPieces,
 };
 
 export const compactRules: Rules = {
   mode: "compact",
   width: 5,
-  height: 10,
+  matrixHeight: 10,
+  bufferRows: 2,
+  height: 12,
   pieces: compactPieces,
 };
 
@@ -148,6 +156,8 @@ export class TetrisGame {
     return {
       width: this.rules.width,
       height: this.rules.height,
+      matrixHeight: this.rules.matrixHeight,
+      bufferRows: this.rules.bufferRows,
       settled: this.board.map((row) => [...row]),
       active: { ...this.active },
       activeCells: this.cellsFor(this.active),
@@ -256,13 +266,14 @@ export class TetrisGame {
   }
 
   private lockPiece(): void {
-    for (const cell of this.cellsFor(this.active)) {
-      if (cell.y < 0) {
-        this.gameOver = true;
-        return;
-      }
+    const cells = this.cellsFor(this.active);
+    for (const cell of cells) {
       const row = this.board[cell.y];
       if (row) row[cell.x] = this.active.id;
+    }
+    if (isLockOut(cells, this.rules.bufferRows)) {
+      this.gameOver = true;
+      return;
     }
 
     const remaining = this.board.filter((row) => row.some((cell) => cell === null));
@@ -286,11 +297,12 @@ export class TetrisGame {
 
   private spawnState(id: PieceID): ActivePiece {
     const definition = this.definition(id);
+    const lowestOccupiedRow = Math.max(...definition.cells.map((cell) => cell.y));
     return {
       id,
       rotation: 0,
       x: Math.floor((this.rules.width - definition.boxSize) / 2),
-      y: 0,
+      y: this.rules.bufferRows - 1 - lowestOccupiedRow,
     };
   }
 
@@ -321,8 +333,12 @@ export class TetrisGame {
 
   private collides(active: ActivePiece): boolean {
     return this.cellsFor(active).some((cell) => {
-      if (cell.x < 0 || cell.x >= this.rules.width || cell.y >= this.rules.height) return true;
-      if (cell.y < 0) return false;
+      if (
+        cell.x < 0 ||
+        cell.x >= this.rules.width ||
+        cell.y < 0 ||
+        cell.y >= this.rules.height
+      ) return true;
       return this.board[cell.y]?.[cell.x] !== null;
     });
   }
@@ -332,6 +348,10 @@ export class TetrisGame {
     if (definition.rotation === "standard") return standardKicks[rotation] ?? compactKicks;
     return compactKicks;
   }
+}
+
+export function isLockOut(cells: readonly Point[], bufferRows: number): boolean {
+  return cells.every((cell) => cell.y < bufferRows);
 }
 
 function piece(
