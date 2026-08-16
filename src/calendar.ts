@@ -87,16 +87,7 @@ export class CalendarRenderer {
     const calendars: ManagedCalendar[] = [];
     for (const entry of this.palette.values()) {
       const [red, green, blue] = rgb16(actualColor(entry, darkMode));
-      await runTransientCalendarOperation(
-        ensureCalendarScript,
-        [ownerMarker, entry.name],
-        `create ${entry.key}`,
-      );
-      await runTransientCalendarOperation(
-        configureCalendarScript,
-        [ownerMarker, entry.name, String(red), String(green), String(blue)],
-        `prepare ${entry.key}`,
-      );
+      await prepareCalendar(entry, [red, green, blue]);
       // Cleanup can identify these calendars by the reserved prefix plus the
       // ownership marker. Avoid reading EventKit identifiers during startup:
       // newly-created Calendar objects frequently reject that property until
@@ -192,6 +183,7 @@ export class CalendarRenderer {
 
 interface PaletteEntry {
   key: string;
+  label: string;
   name: string;
   color: string;
   appearanceColor?: "placeholder" | "title";
@@ -200,12 +192,14 @@ interface PaletteEntry {
 function paletteFor(rules: Rules, hud: boolean): PaletteEntry[] {
   const entries: PaletteEntry[] = rules.pieces.map((definition) => ({
     key: definition.id,
+    label: definition.label,
     name: `${calendarPrefix}${definition.id}`,
     color: definition.color,
   }));
   if (rules.mode === "standard") {
     entries.push({
       key: "empty",
+      label: "Placeholder",
       name: `${calendarPrefix}PLACEHOLDER`,
       color: "#ECECEC",
       appearanceColor: "placeholder",
@@ -214,6 +208,7 @@ function paletteFor(rules: Rules, hud: boolean): PaletteEntry[] {
   if (hud) {
     entries.push({
       key: "title",
+      label: "HUD",
       name: `${calendarPrefix}TITLE`,
       color: "#FFFFFF",
       appearanceColor: "title",
@@ -508,23 +503,69 @@ async function isDarkMode(): Promise<boolean> {
   }
 }
 
-async function runTransientCalendarOperation(
-  script: string,
-  arguments_: readonly string[],
-  label: string,
-): Promise<string> {
+async function prepareCalendar(
+  entry: PaletteEntry,
+  color: readonly [number, number, number],
+): Promise<void> {
+  const startedAt = performance.now();
   let lastError: unknown;
-  for (const wait of [0, 100, 250, 500, 1_000, 2_000]) {
-    if (wait > 0) await delay(wait);
+  let creationRequests = 0;
+  let checks = 0;
+  for (let round = 0; round < 3; round += 1) {
+    creationRequests += 1;
     try {
-      return await runAppleScript(script, arguments_);
+      await runAppleScript(ensureCalendarScript, [ownerMarker, entry.name]);
     } catch (error) {
       lastError = error;
-      if (!(error instanceof Error) || !error.message.includes("-10000")) throw error;
+      if (!isTransientCalendarError(error)) throw calendarPreparationError(entry, creationRequests, checks, startedAt, error);
+    }
+
+    // Most creations appear immediately. If Calendar silently drops the
+    // no-reply request, the next round re-submits it instead of merely polling
+    // the same missing calendar forever.
+    for (const wait of [0, 150, 400, 1_000]) {
+      if (wait > 0) await delay(wait);
+      checks += 1;
+      try {
+        await runAppleScript(configureCalendarScript, [
+          ownerMarker,
+          entry.name,
+          ...color.map(String),
+        ]);
+        return;
+      } catch (error) {
+        lastError = error;
+        if (!isTransientCalendarError(error)) throw calendarPreparationError(entry, creationRequests, checks, startedAt, error);
+      }
     }
   }
-  const detail = lastError instanceof Error ? lastError.message : String(lastError);
-  throw new Error(`Calendar could not ${label}: ${detail}`, { cause: lastError });
+  throw calendarPreparationError(entry, creationRequests, checks, startedAt, lastError);
+}
+
+function isTransientCalendarError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("-10000");
+}
+
+function calendarPreparationError(
+  entry: PaletteEntry,
+  creationRequests: number,
+  checks: number,
+  startedAt: number,
+  cause: unknown,
+): Error {
+  const elapsed = ((performance.now() - startedAt) / 1_000).toFixed(1);
+  const detail = cause instanceof Error ? cause.message : String(cause);
+  return new Error(
+    [
+      `Calendar setup failed while preparing ${entry.label} (${entry.key}).`,
+      `Calendar name: ${entry.name}`,
+      `Tried creation ${creationRequests} time(s) and checked ${checks} time(s) over ${elapsed}s.`,
+      `Last Calendar response: ${detail}`,
+      "Successful game calendars were kept and will be reused on the next run.",
+      "To remove them instead: npx calendar-tetris cleanup",
+    ].join("\n"),
+    { cause },
+  );
 }
 
 function delay(milliseconds: number): Promise<void> {
