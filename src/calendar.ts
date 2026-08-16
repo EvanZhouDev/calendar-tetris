@@ -84,26 +84,27 @@ export class CalendarRenderer {
 
   async prepareCalendars(): Promise<ManagedCalendar[]> {
     const darkMode = await isDarkMode();
-    const arguments_ = [
-      ownerMarker,
-      String(this.palette.size),
-      ...[...this.palette.values()].flatMap((entry) => {
-        const [red, green, blue] = rgb16(actualColor(entry, darkMode));
-        return [entry.key, entry.name, String(red), String(green), String(blue)];
-      }),
-    ];
-    const output = await runAppleScript(prepareCalendarsScript, arguments_);
-    return output
-      .split(/\r?\n/u)
-      .filter(Boolean)
-      .map((line) => {
-        const [key, name, identifier] = line.split("\t");
-        const entry = key ? this.palette.get(key) : undefined;
-        if (!key || !name || !identifier || !entry) {
-          throw new Error(`Calendar returned an invalid managed-calendar record: ${line}`);
-        }
-        return { key, name, identifier, color: entry.color };
-      });
+    const calendars: ManagedCalendar[] = [];
+    for (const entry of this.palette.values()) {
+      const [red, green, blue] = rgb16(actualColor(entry, darkMode));
+      await runTransientCalendarOperation(
+        prepareCalendarScript,
+        [ownerMarker, entry.name, String(red), String(green), String(blue)],
+        `prepare ${entry.key}`,
+      );
+
+      // A calendar returned directly by `make` is occasionally a stale
+      // AppleEvent reference. Resolve its identifier in a fresh process after
+      // Calendar has committed the creation/color operation.
+      const identifier = await runTransientCalendarOperation(
+        calendarIdentifierScript,
+        [ownerMarker, entry.name],
+        `read ${entry.key} identifier`,
+      );
+      if (!identifier) throw new Error(`Calendar returned no identifier for ${entry.name}.`);
+      calendars.push({ key: entry.key, name: entry.name, identifier, color: entry.color });
+    }
+    return calendars;
   }
 
   async resetBoard(): Promise<void> {
@@ -508,35 +509,75 @@ async function isDarkMode(): Promise<boolean> {
   }
 }
 
-const prepareCalendarsScript = String.raw`
+async function runTransientCalendarOperation(
+  script: string,
+  arguments_: readonly string[],
+  label: string,
+): Promise<string> {
+  let lastError: unknown;
+  for (const wait of [0, 100, 250, 500]) {
+    if (wait > 0) await delay(wait);
+    try {
+      return await runAppleScript(script, arguments_);
+    } catch (error) {
+      lastError = error;
+      if (!(error instanceof Error) || !error.message.includes("-10000")) throw error;
+    }
+  }
+  const detail = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(`Calendar could not ${label}: ${detail}`, { cause: lastError });
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+const prepareCalendarScript = String.raw`
 on run argv
     set ownerMarker to item 1 of argv
-    set calendarCount to (item 2 of argv) as integer
-    set outputLines to {}
+    set calendarName to item 2 of argv
+    set redValue to (item 3 of argv) as integer
+    set greenValue to (item 4 of argv) as integer
+    set blueValue to (item 5 of argv) as integer
     tell application "Calendar"
         with timeout of 3600 seconds
-            repeat with calendarIndex from 0 to calendarCount - 1
-                set argumentOffset to 3 + calendarIndex * 5
-                set colorKey to item argumentOffset of argv
-                set calendarName to item (argumentOffset + 1) of argv
-                set redValue to (item (argumentOffset + 2) of argv) as integer
-                set greenValue to (item (argumentOffset + 3) of argv) as integer
-                set blueValue to (item (argumentOffset + 4) of argv) as integer
-                if exists calendar calendarName then
-                    set targetCalendar to calendar calendarName
-                    if description of targetCalendar is not ownerMarker then error "Refusing to use unowned calendar " & calendarName
-                else
+            set matches to every calendar whose name is calendarName
+            if (count of matches) is 0 then
+                try
                     set targetCalendar to make new calendar with properties {name:calendarName, description:ownerMarker}
-                end if
-                set targetColor to {redValue, greenValue, blueValue}
-                if color of targetCalendar is not targetColor then set color of targetCalendar to targetColor
-                set end of outputLines to colorKey & tab & calendarName & tab & (calendarIdentifier of targetCalendar)
-            end repeat
+                on error errorMessage number errorNumber
+                    if errorNumber is not -10000 then error errorMessage number errorNumber
+                end try
+                -- Drain the creation AppleEvent, then deliberately resolve a
+                -- new reference instead of using the object returned by make.
+                get count of calendars
+                set matches to every calendar whose name is calendarName
+            end if
+            if (count of matches) is not 1 then error "Calendar did not create exactly one " & calendarName number -10000
+            set targetCalendar to item 1 of matches
+            if description of targetCalendar is not ownerMarker then error "Refusing to use unowned calendar " & calendarName
+            set targetColor to {redValue, greenValue, blueValue}
+            if color of targetCalendar is not targetColor then set color of targetCalendar to targetColor
             save
+            return calendarName
         end timeout
     end tell
-    set AppleScript's text item delimiters to linefeed
-    return outputLines as text
+end run
+`;
+
+const calendarIdentifierScript = String.raw`
+on run argv
+    set ownerMarker to item 1 of argv
+    set calendarName to item 2 of argv
+    tell application "Calendar"
+        with timeout of 3600 seconds
+            set matches to every calendar whose name is calendarName
+            if (count of matches) is not 1 then error "Missing game calendar " & calendarName number -10000
+            set targetCalendar to item 1 of matches
+            if description of targetCalendar is not ownerMarker then error "Refusing to inspect unowned calendar " & calendarName
+            return calendarIdentifier of targetCalendar
+        end timeout
+    end tell
 end run
 `;
 
@@ -576,6 +617,7 @@ end run
 
 export const calendarAppleScripts = {
   access: calendarAccessScript,
-  prepare: prepareCalendarsScript,
+  prepare: prepareCalendarScript,
+  identifier: calendarIdentifierScript,
   reset: resetCalendarsScript,
 } as const;
