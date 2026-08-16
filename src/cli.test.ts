@@ -50,6 +50,13 @@ test("startup output emphasizes status and keys without coloring descriptions", 
   assert.match(source, /style\.key\("\^C"\)/u);
 });
 
+test("startup title shows only the compact mode suffix", () => {
+  const source = readFileSync(cli, "utf8");
+  assert.match(source, /style\.dim\(" \(5-Column\)"\)/u);
+  assert.doesNotMatch(source, /HUD Off/u);
+  assert.doesNotMatch(source, / · 5-Column/u);
+});
+
 test("busy rendering combines queued terminal actions into the next frame", () => {
   const source = readFileSync(cli, "utf8");
   assert.match(source, /pendingInputs\.push\(input\)/u);

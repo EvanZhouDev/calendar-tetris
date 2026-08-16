@@ -417,10 +417,7 @@ async function requestCalendarAccess(
 }
 
 function gameTitleFor(optionsValue: Options): string {
-  const details: string[] = [];
-  if (!optionsValue.hud) details.push("HUD Off");
-  if (optionsValue.compact) details.push("5-Column");
-  const suffix = details.length > 0 ? style.dim(` · ${details.join(" · ")}`) : "";
+  const suffix = optionsValue.compact ? style.dim(" (5-Column)") : "";
   return `${style.title("Calendar Tetris")}${suffix}`;
 }
 
