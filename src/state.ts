@@ -10,7 +10,6 @@ interface CalendarRecord {
 
 export interface CalendarTetrisState {
   version: 1;
-  permissionGranted: boolean;
   calendars: CalendarRecord[];
 }
 
@@ -24,7 +23,6 @@ const statePath = join(
 
 const emptyState: CalendarTetrisState = {
   version: 1,
-  permissionGranted: false,
   calendars: [],
 };
 
@@ -33,7 +31,6 @@ export async function loadState(): Promise<CalendarTetrisState> {
     const parsed = JSON.parse(await readFile(statePath, "utf8")) as Partial<CalendarTetrisState>;
     if (
       parsed.version !== 1 ||
-      typeof parsed.permissionGranted !== "boolean" ||
       !Array.isArray(parsed.calendars)
     ) {
       return structuredClone(emptyState);
@@ -45,7 +42,7 @@ export async function loadState(): Promise<CalendarTetrisState> {
         typeof calendar.identifier === "string" &&
         typeof calendar.name === "string",
     );
-    return { version: 1, permissionGranted: parsed.permissionGranted, calendars };
+    return { version: 1, calendars };
   } catch {
     return structuredClone(emptyState);
   }
@@ -55,7 +52,6 @@ export async function recordCalendars(calendars: readonly ManagedCalendar[]): Pr
   const state = await loadState();
   await saveState({
     version: 1,
-    permissionGranted: true,
     calendars: calendars.map(({ identifier, name }) => ({ identifier, name })),
   });
 }
@@ -63,11 +59,6 @@ export async function recordCalendars(calendars: readonly ManagedCalendar[]): Pr
 export async function clearRecordedCalendars(): Promise<void> {
   const state = await loadState();
   await saveState({ ...state, calendars: [] });
-}
-
-export async function markPermissionGranted(): Promise<void> {
-  const state = await loadState();
-  if (!state.permissionGranted) await saveState({ ...state, permissionGranted: true });
 }
 
 async function saveState(state: CalendarTetrisState): Promise<void> {

@@ -3,7 +3,7 @@
 import { CalendarRenderer } from "./calendar.js";
 import { cleanupManagedCalendars } from "./cleanup.js";
 import { compactRules, standardRules, TetrisGame } from "./game.js";
-import { loadState, recordCalendars } from "./state.js";
+import { recordCalendars } from "./state.js";
 
 interface Options {
   command: "run" | "cleanup" | "help" | "version";
@@ -75,19 +75,21 @@ async function runGame(optionsValue: Options): Promise<void> {
   const renderer = new CalendarRenderer({ compact: optionsValue.compact, hud: optionsValue.hud });
   const rules = optionsValue.compact ? compactRules : standardRules;
   const game = new TetrisGame(rules);
-  const state = await loadState();
 
   console.log(titleFor(optionsValue));
   console.log();
-  if (!state.permissionGranted) {
-    console.log("Calendar Tetris needs permissions to control Calendar.");
-    console.log("Choose Allow when the permission prompt appears.\n");
-  }
-  console.log("Calendar Tetris is starting. While you’re waiting...\n");
-  console.log("1. Place both Calendar and this terminal in view.");
-  console.log("2. Set Calendar to Week View (⌘2) and Go to Today (⌘T).");
-  console.log("3. Scroll up to the top of Calendar.\n");
-  console.log("You will control the game with the terminal and see the output in Calendar.\n");
+  let instructionsShown = false;
+  const showInstructions = (): void => {
+    if (instructionsShown) return;
+    instructionsShown = true;
+    console.log("Calendar Tetris is starting. While you’re waiting...\n");
+    console.log("1. Place both Calendar and this terminal in view.");
+    console.log("2. Set Calendar to Week View (⌘2) and Go to Today (⌘T).");
+    console.log("3. Scroll up to the top of Calendar.\n");
+    console.log("You will control the game with the terminal and see the output in Calendar.\n");
+  };
+  await requestCalendarAccess(renderer, showInstructions);
+  showInstructions();
 
   let shuttingDown = false;
   let cleanupStarted = false;
@@ -355,6 +357,36 @@ async function runGame(optionsValue: Options): Promise<void> {
   }
 
   armGravity();
+}
+
+async function requestCalendarAccess(
+  renderer: CalendarRenderer,
+  whileWaiting: () => void,
+): Promise<void> {
+  const showPermissionMessage = (): void => {
+    console.log("Calendar Tetris needs permissions to control Calendar.");
+    console.log("Choose Allow when the permission prompt appears.\n");
+  };
+  const access = renderer.requestAccess().then(
+    () => ({ granted: true as const }),
+    (error: unknown) => ({ granted: false as const, error }),
+  );
+  const firstResult = await Promise.race([
+    access,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 1_500)),
+  ]);
+
+  if (firstResult === null) {
+    showPermissionMessage();
+    whileWaiting();
+    const finalResult = await access;
+    if (!finalResult.granted) throw finalResult.error;
+    return;
+  }
+  if (!firstResult.granted) {
+    showPermissionMessage();
+    throw firstResult.error;
+  }
 }
 
 function titleFor(optionsValue: Options): string {

@@ -1,10 +1,6 @@
 import { calendarPrefix, ownerMarker } from "./calendar.js";
 import { runAppleScript } from "./applescript.js";
-import {
-  clearRecordedCalendars,
-  loadState,
-  markPermissionGranted,
-} from "./state.js";
+import { clearRecordedCalendars, loadState } from "./state.js";
 
 export interface CleanupResult {
   removed: string[];
@@ -26,9 +22,6 @@ export async function cleanupManagedCalendars(): Promise<CleanupResult> {
       ...recordedIdentifiers,
     ]),
   );
-  // A successful Calendar query proves that Automation access is currently
-  // available, even when there was nothing left to clean up.
-  await markPermissionGranted();
   if (candidates.length === 0) {
     await clearRecordedCalendars();
     return { removed: [] };

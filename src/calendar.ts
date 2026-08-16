@@ -78,6 +78,10 @@ export class CalendarRenderer {
     this.calendarCount = this.palette.size;
   }
 
+  async requestAccess(): Promise<void> {
+    await runAppleScript(calendarAccessScript);
+  }
+
   async prepareCalendars(): Promise<ManagedCalendar[]> {
     const darkMode = await isDarkMode();
     const arguments_ = [
@@ -536,6 +540,10 @@ on run argv
 end run
 `;
 
+const calendarAccessScript = String.raw`
+tell application "Calendar" to get count of calendars
+`;
+
 const resetCalendarsScript = String.raw`
 on run argv
     set ownerMarker to item 1 of argv
@@ -567,6 +575,7 @@ end run
 `;
 
 export const calendarAppleScripts = {
+  access: calendarAccessScript,
   prepare: prepareCalendarsScript,
   reset: resetCalendarsScript,
 } as const;
