@@ -7,13 +7,13 @@ Play Tetris in Apple Calendar.
 
 ## Run
 
-![](./assets/terminal-demo.png)
-
 Run the CLI and follow the instructions to get started. Calendar Tetris requires macOS.
 
 ```sh
 npx calendar-tetris
 ```
+
+![](./assets/terminal-demo.png)
 
 Control Calendar Tetris by entering keys into your terminal.
 
