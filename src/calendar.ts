@@ -84,17 +84,42 @@ export class CalendarRenderer {
 
   async prepareCalendars(): Promise<ManagedCalendar[]> {
     const darkMode = await isDarkMode();
-    const calendars: ManagedCalendar[] = [];
-    for (const entry of this.palette.values()) {
-      const [red, green, blue] = rgb16(actualColor(entry, darkMode));
-      await prepareCalendar(entry, [red, green, blue]);
-      // Cleanup can identify these calendars by the reserved prefix plus the
-      // ownership marker. Avoid reading EventKit identifiers during startup:
-      // newly-created Calendar objects frequently reject that property until
-      // Calendar has finished committing them.
-      calendars.push({ key: entry.key, name: entry.name, identifier: "", color: entry.color });
+    const entries = [...this.palette.values()];
+    const arguments_ = [
+      ownerMarker,
+      String(entries.length),
+      ...entries.flatMap((entry) => {
+        const [red, green, blue] = rgb16(actualColor(entry, darkMode));
+        return [entry.label, entry.name, String(red), String(green), String(blue)];
+      }),
+    ];
+    let lastError: unknown;
+    for (const wait of [0, 500, 1_500]) {
+      if (wait > 0) await delay(wait);
+      try {
+        await runAppleScript(prepareCalendarsScript, arguments_);
+        return entries.map((entry) => ({
+          key: entry.key,
+          name: entry.name,
+          identifier: "",
+          color: entry.color,
+        }));
+      } catch (error) {
+        lastError = error;
+        if (!isTransientCalendarError(error)) throw error;
+      }
     }
-    return calendars;
+    const detail = lastError instanceof Error ? lastError.message : String(lastError);
+    throw new Error(
+      [
+        "Calendar setup failed while preparing the game palette.",
+        "The complete idempotent palette transaction was attempted 3 times over 2.0s.",
+        `Last Calendar response: ${detail}`,
+        "Successful game calendars were kept and will be reused on the next run.",
+        "To remove them instead: npx calendar-tetris cleanup",
+      ].join("\n"),
+      { cause: lastError },
+    );
   }
 
   async resetBoard(): Promise<void> {
@@ -503,138 +528,55 @@ async function isDarkMode(): Promise<boolean> {
   }
 }
 
-async function prepareCalendar(
-  entry: PaletteEntry,
-  color: readonly [number, number, number],
-): Promise<void> {
-  const startedAt = performance.now();
-  let lastError: unknown;
-  let creationRequests = 0;
-  let checks = 0;
-  for (let round = 0; round < 3; round += 1) {
-    creationRequests += 1;
-    try {
-      await runAppleScript(ensureCalendarScript, [ownerMarker, entry.name]);
-    } catch (error) {
-      lastError = error;
-      if (!isTransientCalendarError(error)) throw calendarPreparationError(entry, creationRequests, checks, startedAt, error);
-    }
-
-    // Most creations appear immediately. If Calendar silently drops the
-    // no-reply request, the next round re-submits it instead of merely polling
-    // the same missing calendar forever.
-    for (const wait of [0, 150, 400, 1_000]) {
-      if (wait > 0) await delay(wait);
-      checks += 1;
-      try {
-        await runAppleScript(configureCalendarScript, [
-          ownerMarker,
-          entry.name,
-          ...color.map(String),
-        ]);
-        return;
-      } catch (error) {
-        lastError = error;
-        if (!isTransientCalendarError(error)) throw calendarPreparationError(entry, creationRequests, checks, startedAt, error);
-      }
-    }
-  }
-  throw calendarPreparationError(entry, creationRequests, checks, startedAt, lastError);
-}
-
 function isTransientCalendarError(error: unknown): boolean {
   return error instanceof Error && error.message.includes("-10000");
-}
-
-function calendarPreparationError(
-  entry: PaletteEntry,
-  creationRequests: number,
-  checks: number,
-  startedAt: number,
-  cause: unknown,
-): Error {
-  const elapsed = ((performance.now() - startedAt) / 1_000).toFixed(1);
-  const detail = cause instanceof Error ? cause.message : String(cause);
-  return new Error(
-    [
-      `Calendar setup failed while preparing ${entry.label} (${entry.key}).`,
-      `Calendar name: ${entry.name}`,
-      `Tried creation ${creationRequests} time(s) and checked ${checks} time(s) over ${elapsed}s.`,
-      `Last Calendar response: ${detail}`,
-      "Successful game calendars were kept and will be reused on the next run.",
-      "To remove them instead: npx calendar-tetris cleanup",
-    ].join("\n"),
-    { cause },
-  );
 }
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-const ensureCalendarScript = String.raw`
+const prepareCalendarsScript = String.raw`
 on run argv
     set ownerMarker to item 1 of argv
-    set calendarName to item 2 of argv
+    set calendarCount to (item 2 of argv) as integer
     tell application "Calendar"
         with timeout of 3600 seconds
-            set matches to every calendar whose name is calendarName
-            if (count of matches) is 1 then
-                set targetCalendar to item 1 of matches
-                set currentDescription to description of targetCalendar
-                if currentDescription is not ownerMarker then
-                    set descriptionIsBlank to currentDescription is missing value
-                    if not descriptionIsBlank then set descriptionIsBlank to currentDescription is ""
-                    if descriptionIsBlank and (count of events of targetCalendar) is 0 then
-                        -- Calendar can accept a no-reply creation while dropping
-                        -- some properties. An empty exact-name calendar is the
-                        -- recoverable partial result of that operation.
-                        set description of targetCalendar to ownerMarker
+            repeat with calendarIndex from 0 to calendarCount - 1
+                set argumentOffset to 3 + calendarIndex * 5
+                set calendarLabel to item argumentOffset of argv
+                set calendarName to item (argumentOffset + 1) of argv
+                set redValue to (item (argumentOffset + 2) of argv) as integer
+                set greenValue to (item (argumentOffset + 3) of argv) as integer
+                set blueValue to (item (argumentOffset + 4) of argv) as integer
+                try
+                    set matches to every calendar whose name is calendarName
+                    if (count of matches) is greater than 1 then error "More than one calendar has the reserved name"
+                    if (count of matches) is 1 then
+                        set targetCalendar to item 1 of matches
+                        set currentDescription to description of targetCalendar
+                        if currentDescription is not ownerMarker then
+                            set descriptionIsBlank to currentDescription is missing value
+                            if not descriptionIsBlank then set descriptionIsBlank to currentDescription is ""
+                            if descriptionIsBlank and (count of events of targetCalendar) is 0 then
+                                set description of targetCalendar to ownerMarker
+                            else
+                                error "The reserved calendar is unowned or nonempty"
+                            end if
+                        end if
                     else
-                        error "Refusing to use an unowned or nonempty calendar " & calendarName
+                        -- This synchronous creation path is the one used by the
+                        -- working prototype. Keeping the palette in one process
+                        -- prevents Calendar from dropping detached requests.
+                        set targetCalendar to make new calendar with properties {name:calendarName, description:ownerMarker}
                     end if
-                end if
-                return calendarName
-            end if
-            if (count of matches) is greater than 1 then error "More than one calendar is named " & calendarName
-
-            -- Calendar often accepts creation but fails while constructing the
-            -- AppleEvent reply. We need no returned object here; a separate
-            -- process below polls for and configures the committed calendar.
-            ignoring application responses
-                make new calendar with properties {name:calendarName, description:ownerMarker}
-            end ignoring
-            return calendarName
-        end timeout
-    end tell
-end run
-`;
-
-const configureCalendarScript = String.raw`
-on run argv
-    set ownerMarker to item 1 of argv
-    set calendarName to item 2 of argv
-    set redValue to (item 3 of argv) as integer
-    set greenValue to (item 4 of argv) as integer
-    set blueValue to (item 5 of argv) as integer
-    tell application "Calendar"
-        with timeout of 3600 seconds
-            set matches to every calendar whose name is calendarName
-            if (count of matches) is not 1 then error "Calendar has not finished creating " & calendarName number -10000
-            set targetCalendar to item 1 of matches
-            set currentDescription to description of targetCalendar
-            if currentDescription is not ownerMarker then
-                set descriptionIsBlank to currentDescription is missing value
-                if not descriptionIsBlank then set descriptionIsBlank to currentDescription is ""
-                if descriptionIsBlank and (count of events of targetCalendar) is 0 then
-                    set description of targetCalendar to ownerMarker
-                else
-                    error "Refusing to use an unowned or nonempty calendar " & calendarName
-                end if
-            end if
-            set targetColor to {redValue, greenValue, blueValue}
-            if color of targetCalendar is not targetColor then set color of targetCalendar to targetColor
-            return calendarName
+                    set targetColor to {redValue, greenValue, blueValue}
+                    if color of targetCalendar is not targetColor then set color of targetCalendar to targetColor
+                on error errorMessage number errorNumber
+                    error "Failed while preparing " & calendarLabel & " (" & calendarName & "): " & errorMessage number errorNumber
+                end try
+            end repeat
+            return calendarCount
         end timeout
     end tell
 end run
@@ -676,7 +618,6 @@ end run
 
 export const calendarAppleScripts = {
   access: calendarAccessScript,
-  ensure: ensureCalendarScript,
-  configure: configureCalendarScript,
+  prepare: prepareCalendarsScript,
   reset: resetCalendarsScript,
 } as const;

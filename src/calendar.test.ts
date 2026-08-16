@@ -119,8 +119,8 @@ test("resident translations create complete replacements before deleting old eve
   assert.ok(deletion > creation);
 });
 
-test("calendar creation does not wait for a fragile Calendar reply", () => {
-  assert.match(calendarAppleScripts.ensure, /ignoring application responses/u);
-  assert.doesNotMatch(calendarAppleScripts.ensure, /get count of calendars/u);
-  assert.doesNotMatch(calendarAppleScripts.configure, /calendarIdentifier/u);
+test("calendar palette setup uses one transaction without identifier reads", () => {
+  assert.match(calendarAppleScripts.prepare, /repeat with calendarIndex/u);
+  assert.match(calendarAppleScripts.prepare, /make new calendar/u);
+  assert.doesNotMatch(calendarAppleScripts.prepare, /calendarIdentifier/u);
 });
