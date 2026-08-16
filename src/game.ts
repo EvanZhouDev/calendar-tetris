@@ -190,15 +190,9 @@ export class TetrisGame {
     return true;
   }
 
-  dropToBottom(): boolean {
+  hardDrop(): boolean {
     if (this.gameOver) return false;
     while (this.move(0, 1)) {}
-    return true;
-  }
-
-  lockGroundedPiece(): boolean {
-    if (this.gameOver) return false;
-    if (!this.collides({ ...this.active, y: this.active.y + 1 })) return false;
     this.lockPiece();
     return true;
   }

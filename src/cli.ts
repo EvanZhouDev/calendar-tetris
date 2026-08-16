@@ -96,7 +96,7 @@ async function runGame(optionsValue: Options): Promise<void> {
   let currentOperation: Promise<unknown> | null = null;
   let activeRender: Promise<void> | null = null;
   let gravityTimer: NodeJS.Timeout | undefined;
-  let pendingInput: string | null = null;
+  const pendingInputs: string[] = [];
   let resolveStart: (() => void) | undefined;
   let startListener: (() => void) | undefined;
   let inputBuffer = "";
@@ -124,7 +124,7 @@ async function runGame(optionsValue: Options): Promise<void> {
     shuttingDown = true;
     cleanupStarted = true;
     if (gravityTimer) clearTimeout(gravityTimer);
-    pendingInput = null;
+    pendingInputs.length = 0;
     resolveStart?.();
     restoreTerminal();
     console.log("\nStopped. Cleaning up calendars used for Calendar Tetris.");
@@ -164,7 +164,7 @@ async function runGame(optionsValue: Options): Promise<void> {
 
   try {
     const calendars = await phase(
-      `[1/3] Preparing ${renderer.calendarCount} Game Calendars`,
+      `[1/2] Preparing ${renderer.calendarCount} Game Calendars`,
       async () => {
         const prepared = await renderer.prepareCalendars();
         await recordCalendars(prepared);
@@ -176,9 +176,7 @@ async function runGame(optionsValue: Options): Promise<void> {
       throw new Error(`Prepared ${calendars.length} calendars; expected ${renderer.calendarCount}.`);
     }
 
-    await phase("[2/3] Resetting the board", () => renderer.resetBoard());
-    if (shuttingDown) return;
-    await phase("[3/3] Drawing first piece", () => renderer.render(game.snapshot, 0));
+    await phase("[2/2] Resetting the board", () => renderer.resetBoard());
     if (shuttingDown) return;
   } catch (error) {
     process.off("SIGINT", handleSignal);
@@ -203,10 +201,25 @@ async function runGame(optionsValue: Options): Promise<void> {
   startListener = undefined;
   if (shuttingDown) return;
 
+  gameStartedAt = performance.now();
+  const firstRender = renderer.render(game.snapshot, 0);
+  currentOperation = firstRender;
+  try {
+    await firstRender;
+  } catch (error) {
+    process.off("SIGINT", handleSignal);
+    process.off("SIGTERM", handleSignal);
+    restoreTerminal();
+    await renderer.close().catch(() => {});
+    throw error;
+  } finally {
+    if (currentOperation === firstRender) currentOperation = null;
+  }
+  if (shuttingDown) return;
+
   process.stdin.setRawMode(true);
   process.stdin.resume();
   process.stdin.on("data", handleInput);
-  gameStartedAt = performance.now();
 
   const hudSignature = (): string => {
     const snapshot = game.snapshot;
@@ -232,10 +245,7 @@ async function runGame(optionsValue: Options): Promise<void> {
     void shutdown();
   };
 
-  const renderTransition = (
-    transition: () => boolean,
-    afterVisible?: () => void,
-  ): void => {
+  const renderTransition = (transition: () => boolean): void => {
     if (shuttingDown || activeRender) return;
     if (gravityTimer) clearTimeout(gravityTimer);
     gravityTimer = undefined;
@@ -243,7 +253,7 @@ async function runGame(optionsValue: Options): Promise<void> {
     const previousHUD = hudSignature();
     const changed = transition();
     if (!changed) {
-      armGravity();
+      continueInputQueue();
       return;
     }
     if (hudSignature() !== previousHUD) {
@@ -258,16 +268,15 @@ async function runGame(optionsValue: Options): Promise<void> {
       .finally(() => {
         if (activeRender === render) activeRender = null;
         if (shuttingDown) return;
-        if (afterVisible) {
-          afterVisible();
-          return;
-        }
-        const next = pendingInput;
-        pendingInput = null;
-        if (next) dispatchInput(next);
-        else armGravity();
+        continueInputQueue();
       });
   };
+
+  function continueInputQueue(): void {
+    const next = pendingInputs.shift();
+    if (next) dispatchInput(next);
+    else armGravity();
+  }
 
   function armGravity(): void {
     if (gravityTimer) clearTimeout(gravityTimer);
@@ -280,8 +289,10 @@ async function runGame(optionsValue: Options): Promise<void> {
 
   function dispatchInput(input: string): void {
     if (shuttingDown) return;
+    if (gravityTimer) clearTimeout(gravityTimer);
+    gravityTimer = undefined;
     if (activeRender) {
-      pendingInput = input;
+      pendingInputs.push(input);
       return;
     }
     switch (input) {
@@ -298,10 +309,7 @@ async function runGame(optionsValue: Options): Promise<void> {
         renderTransition(() => game.softDrop());
         break;
       case " ":
-        renderTransition(
-          () => game.dropToBottom(),
-          () => renderTransition(() => game.lockGroundedPiece()),
-        );
+        renderTransition(() => game.hardDrop());
         break;
       case "c":
       case "C":
@@ -318,7 +326,7 @@ async function runGame(optionsValue: Options): Promise<void> {
         });
         break;
       default:
-        armGravity();
+        continueInputQueue();
     }
   }
 

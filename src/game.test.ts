@@ -45,12 +45,10 @@ test("a piece cannot move beyond either wall", () => {
   assert.equal(game.moveRight(), false);
 });
 
-test("hard drop exposes its landing before lock and spawn", () => {
+test("hard drop locks and spawns in one game transition", () => {
   const game = new TetrisGame(standardRules, () => 0);
   const before = game.snapshot.active.id;
-  assert.equal(game.dropToBottom(), true);
-  assert.equal(game.snapshot.active.id, before);
-  assert.equal(game.lockGroundedPiece(), true);
+  assert.equal(game.hardDrop(), true);
   assert.ok(game.snapshot.settled.flat().some((cell) => cell === before));
 });
 
@@ -60,8 +58,7 @@ test("hold is available once per falling piece", () => {
   assert.equal(game.hold(), true);
   assert.equal(game.snapshot.held, first);
   assert.equal(game.hold(), false);
-  game.dropToBottom();
-  game.lockGroundedPiece();
+  game.hardDrop();
   assert.equal(game.hold(), true);
 });
 
