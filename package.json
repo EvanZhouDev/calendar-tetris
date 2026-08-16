@@ -4,7 +4,7 @@
   "description": "Play Tetris in Apple Calendar",
   "type": "module",
   "bin": {
-    "calendar-tetris": "./dist/cli.js"
+    "calendar-tetris": "dist/cli.js"
   },
   "files": [
     "dist/applescript.js",
