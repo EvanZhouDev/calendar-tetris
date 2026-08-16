@@ -29,6 +29,31 @@ export async function runAppleScript(
   }
 }
 
+export async function runJXAScript(
+  script: string,
+  arguments_: readonly string[] = [],
+): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync(
+      "/usr/bin/osascript",
+      ["-l", "JavaScript", "-e", script, "--", ...arguments_],
+      { maxBuffer: 16 * 1024 * 1024 },
+    );
+    return stdout.trim();
+  } catch (error) {
+    const details = error as Error & {
+      code?: number | string;
+      signal?: string;
+      stderr?: string | Buffer;
+    };
+    const stderr = details.stderr?.toString().trim();
+    const reason = details.signal
+      ? `osascript stopped by ${details.signal}`
+      : `osascript exited with code ${details.code ?? "unknown"}`;
+    throw new Error(stderr || reason, { cause: error });
+  }
+}
+
 export interface ResidentReference {
   key: string;
   calendarName: string;

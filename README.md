@@ -57,7 +57,9 @@ npx calendar-tetris cleanup
 
 Cleanup verifies ownership markers and event ownership before deleting
 anything. It can also recover an empty partial calendar from an interrupted
-setup, but never removes a nonempty unowned calendar.
+setup, but never removes a nonempty unowned calendar. Event clearing is one
+AppleScript batch; calendar removal is one EventKit commit and may request Full
+Calendar Access the first time it runs.
 
 ## Development
 
