@@ -1,0 +1,28 @@
+{
+  "name": "calendar-tetris",
+  "version": "0.1.0",
+  "description": "Play Tetris in Apple Calendar",
+  "type": "module",
+  "bin": {
+    "calendar-tetris": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test dist/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "os": [
+    "darwin"
+  ],
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "typescript": "^5.9.2"
+  }
+}
+
